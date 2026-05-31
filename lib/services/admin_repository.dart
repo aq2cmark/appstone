@@ -1,0 +1,213 @@
+import 'dart:math';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+class AdminRepository {
+  AdminRepository({FirebaseAuth? auth, FirebaseFirestore? firestore})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+
+  Stream<User?> authStateChanges() => _auth.authStateChanges();
+
+  Stream<List<CapstoneGroup>> groupsStream() {
+    return _firestore
+        .collection('groups')
+        .orderBy('createdAt')
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs.map(CapstoneGroup.fromSnapshot).toList(),
+        );
+  }
+
+  Future<void> signInAdmin({required String email, required String password}) {
+    return _auth.signInWithEmailAndPassword(email: email, password: password);
+  }
+
+  Future<void> signOut() => _auth.signOut();
+
+  Future<void> createGroup(String name) {
+    return _firestore.collection('groups').add({
+      'name': name,
+      'isPremium': false,
+      'students': <Map<String, dynamic>>[],
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<StudentAccount> registerStudent(StudentDraft draft) async {
+    final groupRef = _firestore.collection('groups').doc(draft.groupId);
+    final counterRef = _firestore.collection('metadata').doc('studentCounter');
+
+    return _firestore.runTransaction((transaction) async {
+      final groupSnapshot = await transaction.get(groupRef);
+      if (!groupSnapshot.exists) {
+        throw StateError('The selected group no longer exists.');
+      }
+
+      final group = CapstoneGroup.fromSnapshot(groupSnapshot);
+      if (group.students.length >= 5) {
+        throw StateError('This group already has 5 members.');
+      }
+
+      final counterSnapshot = await transaction.get(counterRef);
+      final currentNumber = counterSnapshot.data()?['nextNumber'] as int? ?? 1;
+      final studentId = 'STU${currentNumber.toString().padLeft(3, '0')}';
+      final password = _generatePassword(currentNumber);
+      final student = StudentAccount(
+        id: groupRef.collection('students').doc().id,
+        name: draft.name,
+        email: draft.email,
+        studentId: studentId,
+        password: password,
+      );
+
+      transaction.set(counterRef, {
+        'nextNumber': currentNumber + 1,
+      }, SetOptions(merge: true));
+      transaction.update(groupRef, {
+        'students': FieldValue.arrayUnion([student.toMap()]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      return student;
+    });
+  }
+
+  Future<void> deleteStudent({
+    required CapstoneGroup group,
+    required StudentAccount student,
+  }) {
+    return _firestore.collection('groups').doc(group.id).update({
+      'students': FieldValue.arrayRemove([student.toMap()]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> togglePremium(CapstoneGroup group) {
+    return _firestore.collection('groups').doc(group.id).update({
+      'isPremium': !group.isPremium,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<StudentLoginResult?> signInStudent({
+    required String usernameOrEmail,
+    required String password,
+  }) async {
+    final normalizedLogin = usernameOrEmail.trim().toLowerCase();
+    final snapshot = await _firestore.collection('groups').get();
+
+    for (final groupDoc in snapshot.docs) {
+      final group = CapstoneGroup.fromSnapshot(groupDoc);
+      for (final student in group.students) {
+        final emailMatches = student.email.toLowerCase() == normalizedLogin;
+        final idMatches = student.studentId.toLowerCase() == normalizedLogin;
+        if ((emailMatches || idMatches) && student.password == password) {
+          return StudentLoginResult(group: group, student: student);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String _generatePassword(int seed) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final random = Random(DateTime.now().microsecondsSinceEpoch + seed);
+    final code = List.generate(
+      6,
+      (_) => chars[random.nextInt(chars.length)],
+    ).join();
+    return 'temp$code';
+  }
+}
+
+class CapstoneGroup {
+  const CapstoneGroup({
+    required this.id,
+    required this.name,
+    required this.isPremium,
+    required this.students,
+  });
+
+  factory CapstoneGroup.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final data = snapshot.data() ?? {};
+    final rawStudents = data['students'] as List<dynamic>? ?? [];
+    return CapstoneGroup(
+      id: snapshot.id,
+      name: data['name'] as String? ?? 'Untitled Group',
+      isPremium: data['isPremium'] as bool? ?? false,
+      students: rawStudents
+          .whereType<Map<dynamic, dynamic>>()
+          .map((student) => StudentAccount.fromMap(student))
+          .toList(),
+    );
+  }
+
+  final String id;
+  final String name;
+  final bool isPremium;
+  final List<StudentAccount> students;
+}
+
+class StudentAccount {
+  const StudentAccount({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.studentId,
+    required this.password,
+  });
+
+  factory StudentAccount.fromMap(Map<dynamic, dynamic> map) {
+    return StudentAccount(
+      id: map['id'] as String? ?? '',
+      name: map['name'] as String? ?? '',
+      email: map['email'] as String? ?? '',
+      studentId: map['studentId'] as String? ?? '',
+      password: map['password'] as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String name;
+  final String email;
+  final String studentId;
+  final String password;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'studentId': studentId,
+      'password': password,
+    };
+  }
+}
+
+class StudentDraft {
+  const StudentDraft({
+    required this.name,
+    required this.email,
+    required this.groupId,
+  });
+
+  final String name;
+  final String email;
+  final String groupId;
+}
+
+class StudentLoginResult {
+  const StudentLoginResult({required this.group, required this.student});
+
+  final CapstoneGroup group;
+  final StudentAccount student;
+}
