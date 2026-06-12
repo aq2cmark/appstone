@@ -1,5 +1,5 @@
 import 'package:appstone/screens/admin_portal_page.dart';
-import 'package:appstone/screens/dashboard_page.dart';
+import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
 import 'package:flutter/material.dart';
 
@@ -27,73 +27,111 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.paper,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.menu_book, color: AppColors.red, size: 48),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'AppStone',
-                      textAlign: TextAlign.center,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: AppColors.red,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(Icons.menu_book, color: Colors.white, size: 48),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'APPSTONE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  ),
+                  const Text(
+                    'Dominican College of Tarlac INC',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 28),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Username or Email',
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const Text(
-                      'Dominican College of Tarlac',
-                      textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: _usernameController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Enter your username or email',
+                      border: OutlineInputBorder(),
                     ),
-                    const SizedBox(height: 28),
-                    TextField(
-                      controller: _usernameController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email or Student ID',
-                        border: OutlineInputBorder(),
+                  ),
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Password',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: _hidePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() => _hidePassword = !_hidePassword);
-                          },
-                          icon: Icon(
-                            _hidePassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
+                  ),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: _hidePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Enter your password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() => _hidePassword = !_hidePassword);
+                        },
+                        icon: Icon(
+                          _hidePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.red,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
                       onPressed: _isLoading ? null : _signIn,
-                      child: Text(_isLoading ? 'Signing in...' : 'Sign In'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.red,
+                        foregroundColor: Colors.white,
+                        elevation: 6,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: Text(
+                        _isLoading ? 'Signing in...' : 'Sign In',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
             ),
           ),
@@ -130,7 +168,12 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
       if (student != null) {
-        _goTo(const DashboardPage());
+        _goTo(
+          DashboardScreen(
+            studentName: student.student.name,
+            groupName: student.group.name,
+          ),
+        );
       } else {
         _showMessage('Invalid credentials.');
       }

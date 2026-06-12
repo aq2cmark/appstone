@@ -1,5 +1,11 @@
 import 'package:appstone/firebase_options.dart';
+import 'package:appstone/screens/capstone_manual_screen.dart';
+import 'package:appstone/screens/defense_practice_screen.dart';
 import 'package:appstone/screens/login_page.dart';
+import 'package:appstone/screens/title_defense_screen.dart';
+import 'package:appstone/screens/title_generator_screen.dart';
+import 'package:appstone/screens/ai_workflow_screen.dart';
+import 'package:appstone/screens/paper_checker_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -23,6 +29,14 @@ class MainApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const LoginPage(),
+      routes: {
+        '/capstone-manual': (_) => const CapstoneManualScreen(),
+        '/title-generator': (_) => const TitleGeneratorScreen(),
+        '/defense-practice': (_) => const DefensePracticeScreen(),
+        '/title-defense': (_) => const TitleDefenseScreen(),
+        '/ai-workflow': (_) => const AIWorkflowScreen(),
+        '/paper-checker': (_) => const PaperCheckerScreen(),
+      },
     );
   }
 }
