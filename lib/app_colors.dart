@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+// Central color palette for the app.
+// Edit these values if your group wants to change the overall AppStone theme.
 class AppColors {
   static const Color primary = Color(0xFF8B1A1A);
   static const Color primaryDark = Color(0xFF6B1414);

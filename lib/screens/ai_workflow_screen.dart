@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../app_colors.dart';
 
+// Simple workflow tracker screen.
+// This is local-only for now; checked tasks reset when the screen is reopened.
 class AIWorkflowScreen extends StatefulWidget {
   const AIWorkflowScreen({super.key});
 
@@ -10,6 +12,7 @@ class AIWorkflowScreen extends StatefulWidget {
 }
 
 class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
+  // Edit this list to change the default capstone timeline steps.
   final List<String> tasks = [
     'Chapter 1 - Introduction',
     'Chapter 2 - Review of Related Literature',
@@ -32,46 +35,70 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            'Plan and track your capstone timeline.',
-            style: TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 16),
-          LinearProgressIndicator(
-            value: done.length / tasks.length,
-            color: AppColors.primary,
-          ),
-          const SizedBox(height: 8),
-          Text('${done.length} of ${tasks.length} tasks completed'),
-          const SizedBox(height: 16),
-          for (final task in tasks)
-            Card(
-              child: CheckboxListTile(
-                activeColor: AppColors.primary,
-                value: done.contains(task),
-                title: Text(task),
-                subtitle: const Text('Tap to mark as done'),
-                onChanged: (value) {
-                  setState(() {
-                    if (value == true) {
-                      done.add(task);
-                    } else {
-                      done.remove(task);
-                    }
-                  });
-                },
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Plan and track your capstone timeline.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: done.length / tasks.length,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(height: 8),
+                  Text('${done.length} of ${tasks.length} tasks completed'),
+                  const SizedBox(height: 16),
+                  for (final task in tasks)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: CheckboxListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        activeColor: AppColors.primary,
+                        value: done.contains(task),
+                        title: Text(task),
+                        subtitle: const Text('Tap to mark as done'),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              done.add(task);
+                            } else {
+                              done.remove(task);
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('AI suggestions coming soon.'),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Generate Workflow Suggestions'),
+                  ),
+                ],
               ),
             ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('AI suggestions coming soon.')),
-              );
-            },
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text('Generate Workflow Suggestions'),
           ),
         ],
       ),

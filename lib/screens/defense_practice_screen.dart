@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../app_colors.dart';
 
+// Lets students choose a defense practice mode.
+// Only Title Defense opens a real practice screen for now.
 class DefensePracticeScreen extends StatelessWidget {
   const DefensePracticeScreen({super.key});
 
@@ -17,32 +19,43 @@ class DefensePracticeScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            'Choose a mode and practice your defense.',
-            style: TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 16),
-          PracticeModeCard(
-            title: 'Title Defense',
-            subtitle: 'Practice defending your proposal and research plan.',
-            details: '15-20 min | 5-8 questions',
-            icon: Icons.chat_bubble_outline,
-            color: AppColors.primary,
-            onTap: () => Navigator.pushNamed(context, '/title-defense'),
-          ),
-          PracticeModeCard(
-            title: 'Oral Defense',
-            subtitle: 'Practice presenting your system design.',
-            details: '30-45 min | 10-15 questions',
-            icon: Icons.mic_none,
-            color: AppColors.grey,
-          ),
-          PracticeModeCard(
-            title: 'Final Defense',
-            subtitle: 'Practice your full final presentation.',
-            details: '45-60 min | 15-20 questions',
-            icon: Icons.emoji_events_outlined,
-            color: AppColors.gold,
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Choose a mode and practice your defense.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  PracticeModeCard(
+                    title: 'Title Defense',
+                    subtitle:
+                        'Practice defending your proposal and research plan.',
+                    details: '15-20 min | 5-8 questions',
+                    icon: Icons.chat_bubble_outline,
+                    color: AppColors.primary,
+                    onTap: () => Navigator.pushNamed(context, '/title-defense'),
+                  ),
+                  PracticeModeCard(
+                    title: 'Oral Defense',
+                    subtitle: 'Practice presenting your system design.',
+                    details: '30-45 min | 10-15 questions',
+                    icon: Icons.mic_none,
+                    color: AppColors.grey,
+                  ),
+                  PracticeModeCard(
+                    title: 'Final Defense',
+                    subtitle: 'Practice your full final presentation.',
+                    details: '45-60 min | 15-20 questions',
+                    icon: Icons.emoji_events_outlined,
+                    color: AppColors.gold,
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -51,6 +64,7 @@ class DefensePracticeScreen extends StatelessWidget {
 }
 
 class PracticeModeCard extends StatelessWidget {
+  // Simple card used for each defense mode.
   const PracticeModeCard({
     super.key,
     required this.title,
@@ -71,10 +85,20 @@ class PracticeModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: const EdgeInsets.only(bottom: 14),
       color: color,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
+        contentPadding: const EdgeInsets.all(18),
+        leading: Icon(icon, color: Colors.white, size: 32),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         subtitle: Text(
           '$subtitle\n$details',
           style: const TextStyle(color: Colors.white70),

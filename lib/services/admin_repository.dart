@@ -3,6 +3,9 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// AdminRepository is the Firebase layer.
+// Screens call these methods instead of writing Firebase code directly.
+// This keeps UI files easier to read and makes Firebase changes easier later.
 class AdminRepository {
   AdminRepository({FirebaseAuth? auth, FirebaseFirestore? firestore})
     : _auth = auth ?? FirebaseAuth.instance,
@@ -13,6 +16,7 @@ class AdminRepository {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
+  // Live list of capstone groups. Any Firestore change updates the admin UI.
   Stream<List<CapstoneGroup>> groupsStream() {
     return _firestore
         .collection('groups')
@@ -23,12 +27,21 @@ class AdminRepository {
         );
   }
 
+  // Admin accounts are created in Firebase Authentication.
   Future<void> signInAdmin({required String email, required String password}) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  // Sends Firebase's built-in password reset email for admin accounts.
+  // Student accounts in this prototype use generated passwords, so admins reset them manually.
+  Future<void> sendAdminPasswordReset(String email) {
+    return _auth.sendPasswordResetEmail(email: email);
+  }
+
   Future<void> signOut() => _auth.signOut();
 
+  // Creates a group document. Students are stored inside the group for now
+  // because this prototype is simpler to understand that way.
   Future<void> createGroup(String name) {
     return _firestore.collection('groups').add({
       'name': name,
@@ -39,6 +52,8 @@ class AdminRepository {
     });
   }
 
+  // Adds a student to a group and generates a simple Student ID/password.
+  // Later, this can be upgraded to real Firebase Auth student accounts.
   Future<StudentAccount> registerStudent(StudentDraft draft) async {
     final groupRef = _firestore.collection('groups').doc(draft.groupId);
     final counterRef = _firestore.collection('metadata').doc('studentCounter');
@@ -95,6 +110,8 @@ class AdminRepository {
     });
   }
 
+  // Student login checks the generated credentials stored inside groups.
+  // This is simple for the prototype; secure production auth should use Auth.
   Future<StudentLoginResult?> signInStudent({
     required String usernameOrEmail,
     required String password,
@@ -127,6 +144,7 @@ class AdminRepository {
   }
 }
 
+// Data model for one capstone group from Firestore.
 class CapstoneGroup {
   const CapstoneGroup({
     required this.id,
@@ -157,6 +175,7 @@ class CapstoneGroup {
   final List<StudentAccount> students;
 }
 
+// Data model for one student account inside a group.
 class StudentAccount {
   const StudentAccount({
     required this.id,
@@ -193,6 +212,7 @@ class StudentAccount {
   }
 }
 
+// Temporary object used when the admin submits the register student form.
 class StudentDraft {
   const StudentDraft({
     required this.name,
@@ -205,6 +225,7 @@ class StudentDraft {
   final String groupId;
 }
 
+// Returned after a student login so the dashboard can show student/group info.
 class StudentLoginResult {
   const StudentLoginResult({required this.group, required this.student});
 

@@ -9,12 +9,16 @@ import 'package:appstone/screens/paper_checker_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+// App entry point.
+// Firebase must be initialized before any screen reads Auth or Firestore.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MainApp());
 }
 
+// MainApp keeps global app settings in one place:
+// theme colors, the first screen, and named routes for feature pages.
 class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
@@ -29,6 +33,8 @@ class MainApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const LoginPage(),
+      // Named routes let dashboard cards open screens by route name.
+      // Add future feature pages here when your group creates new screens.
       routes: {
         '/capstone-manual': (_) => const CapstoneManualScreen(),
         '/title-generator': (_) => const TitleGeneratorScreen(),

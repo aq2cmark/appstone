@@ -1,7 +1,12 @@
-import 'package:appstone/screens/login_page.dart';
-import 'package:appstone/services/admin_repository.dart';
 import 'package:flutter/material.dart';
 
+import '../app_colors.dart';
+import '../services/admin_repository.dart';
+import 'login_page.dart' hide AppColors;
+
+// AdminPortalPage is the main admin area.
+// It listens to Firestore groups in real time, then shows either:
+// 1. the group dashboard, 2. the register student form, or 3. settings.
 class AdminPortalPage extends StatefulWidget {
   const AdminPortalPage({super.key});
 
@@ -11,23 +16,16 @@ class AdminPortalPage extends StatefulWidget {
 
 class _AdminPortalPageState extends State<AdminPortalPage> {
   final _repo = AdminRepository();
-  int _tab = 0;
+  int selectedPage = 0;
 
   @override
   Widget build(BuildContext context) {
+    // Desktop/tablet shows the sidebar. Phones use a drawer opened by menu.
+    final isWide = MediaQuery.sizeOf(context).width >= 800;
+
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppColors.red,
-        foregroundColor: Colors.white,
-        title: const Text('AppStone Admin'),
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.background,
+      drawer: isWide ? null : Drawer(child: buildSidebarContent()),
       body: StreamBuilder<List<CapstoneGroup>>(
         stream: _repo.groupsStream(),
         builder: (context, snapshot) {
@@ -39,34 +37,23 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           }
 
           final groups = snapshot.data!;
-          return Column(
+
+          return Row(
             children: [
-              NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (index) => setState(() => _tab = index),
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.dashboard),
-                    label: 'Groups',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.person_add),
-                    label: 'Register',
-                  ),
-                ],
-              ),
+              if (isWide) buildSidebar(),
               Expanded(
-                child: _tab == 0
-                    ? GroupsTab(
-                        groups: groups,
-                        onCreateGroup: _createGroup,
-                        onTogglePremium: _togglePremium,
-                        onDeleteStudent: _deleteStudent,
-                      )
-                    : RegisterStudentTab(
-                        groups: groups,
-                        onRegister: _registerStudent,
-                      ),
+                child: Column(
+                  children: [
+                    buildHeader(showMenuButton: !isWide),
+                    Expanded(
+                      child: selectedPage == 0
+                          ? buildDashboard(groups)
+                          : selectedPage == 1
+                          ? buildRegisterStudent(groups)
+                          : buildSettings(),
+                    ),
+                  ],
+                ),
               ),
             ],
           );
@@ -75,17 +62,434 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
   }
 
-  Future<void> _createGroup() async {
+  Widget buildSidebar() {
+    return Container(
+      width: 250,
+      color: AppColors.primary,
+      child: buildSidebarContent(),
+    );
+  }
+
+  Widget buildSidebarContent() {
+    // Kept as a separate widget so the same menu can be used
+    // in the desktop sidebar and the mobile drawer.
+    return Container(
+      color: AppColors.primary,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.white24,
+                    child: Icon(Icons.school, color: Colors.white),
+                  ),
+                  SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'APPSTONE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Admin Portal',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white24),
+            navButton(0, Icons.dashboard, 'Dashboard'),
+            navButton(1, Icons.person_add, 'Register Student'),
+            navButton(2, Icons.settings, 'Settings'),
+            const Spacer(),
+            navButton(-1, Icons.logout, 'Logout'),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget navButton(int index, IconData icon, String label) {
+    final selected = selectedPage == index;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ListTile(
+        selected: selected,
+        selectedTileColor: Colors.white24,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        leading: Icon(icon, color: Colors.white),
+        title: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        onTap: () {
+          if (index == -1) {
+            logout();
+          } else {
+            setState(() => selectedPage = index);
+            if (Navigator.canPop(context)) Navigator.pop(context);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget buildHeader({required bool showMenuButton}) {
+    // Header text changes depending on the selected admin page.
+    final title = selectedPage == 0
+        ? 'Capstone Groups Overview'
+        : selectedPage == 1
+        ? 'Register New Student'
+        : 'Settings';
+
+    final subtitle = selectedPage == 0
+        ? 'Manage student groups and monitor premium feature subscriptions'
+        : selectedPage == 1
+        ? 'Add a student to a capstone group and generate credentials'
+        : 'Basic admin settings';
+
+    return Container(
+      width: double.infinity,
+      color: AppColors.primary,
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 24),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            if (showMenuButton) ...[
+              Builder(
+                builder: (context) => IconButton(
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  icon: const Icon(Icons.menu, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(subtitle, style: const TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildDashboard(List<CapstoneGroup> groups) {
+    // Summary values are calculated from the Firestore group list.
+    final totalStudents = groups.fold<int>(
+      0,
+      (sum, group) => sum + group.students.length,
+    );
+    final premiumGroups = groups.where((group) => group.isPremium).length;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 900;
+        final pagePadding = isWide ? 32.0 : 16.0;
+        final availableWidth = constraints.maxWidth - (pagePadding * 2);
+        final statWidth = isWide ? (availableWidth - 40) / 3 : availableWidth;
+
+        return ListView(
+          padding: EdgeInsets.all(pagePadding),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+                onPressed: createGroup,
+                icon: const Icon(Icons.add),
+                label: const Text('Create New Group'),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 20,
+              runSpacing: 16,
+              children: [
+                statCard(
+                  'Total Groups',
+                  groups.length.toString(),
+                  Icons.groups,
+                  statWidth,
+                ),
+                statCard(
+                  'Total Students',
+                  totalStudents.toString(),
+                  Icons.person_add,
+                  statWidth,
+                ),
+                statCard(
+                  'Premium Groups',
+                  premiumGroups.toString(),
+                  Icons.workspace_premium,
+                  statWidth,
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            if (groups.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('No groups yet. Click Create New Group first.'),
+                ),
+              ),
+            for (final group in groups) buildGroupCard(group),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget statCard(String label, String value, IconData icon, double width) {
+    // The parent calculates width so the cards fill the row on desktop
+    // and become full-width blocks on mobile.
+    return SizedBox(
+      width: width,
+      child: Card(
+        color: const Color(0xFFFFF1F1),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(color: AppColors.textGrey),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              CircleAvatar(
+                backgroundColor: AppColors.primary.withValues(alpha: 0.10),
+                child: Icon(icon, color: AppColors.primary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildGroupCard(CapstoneGroup group) {
+    // One card per capstone group.
+    // The DataTable is horizontally scrollable so it still works on mobile.
+    return Card(
+      margin: const EdgeInsets.only(bottom: 24),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wideHeader = constraints.maxWidth >= 650;
+              final details = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        group.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Chip(
+                        label: Text(group.isPremium ? 'Premium' : 'Free Plan'),
+                        backgroundColor: group.isPremium
+                            ? AppColors.gold
+                            : AppColors.grey,
+                        labelStyle: const TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${group.students.length} of 5 members - ${5 - group.students.length} spots available',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              );
+
+              final premiumButton = FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: group.isPremium
+                      ? Colors.white
+                      : AppColors.gold,
+                  foregroundColor: group.isPremium
+                      ? AppColors.primary
+                      : Colors.white,
+                ),
+                onPressed: () => togglePremium(group),
+                child: Text(
+                  group.isPremium ? 'Revoke Premium' : 'Grant Premium',
+                ),
+              );
+
+              return Container(
+                width: double.infinity,
+                color: AppColors.primary,
+                padding: const EdgeInsets.all(20),
+                child: wideHeader
+                    ? Row(
+                        children: [
+                          Expanded(child: details),
+                          const SizedBox(width: 16),
+                          premiumButton,
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          details,
+                          const SizedBox(height: 14),
+                          premiumButton,
+                        ],
+                      ),
+              );
+            },
+          ),
+          if (group.students.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No students in this group yet.'),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: DataTable(
+                      columns: const [
+                        DataColumn(label: Text('Student Name')),
+                        DataColumn(label: Text('Email')),
+                        DataColumn(label: Text('Student ID')),
+                        DataColumn(label: Text('Password')),
+                        DataColumn(label: Text('Actions')),
+                      ],
+                      rows: [
+                        for (final student in group.students)
+                          DataRow(
+                            cells: [
+                              DataCell(Text(student.name)),
+                              DataCell(Text(student.email)),
+                              DataCell(Text(student.studentId)),
+                              DataCell(Text(student.password)),
+                              DataCell(
+                                IconButton(
+                                  onPressed: () =>
+                                      deleteStudent(group, student),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildRegisterStudent(List<CapstoneGroup> groups) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: RegisterStudentForm(
+                groups: groups,
+                onRegister: registerStudent,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildSettings() {
+    return const Center(
+      child: Card(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Settings template. Add your controls here later.'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> createGroup() async {
+    // Dialog returns the typed group name, then Firestore creates the group.
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Create Group'),
+        title: const Text('Create New Capstone Group'),
         content: TextField(
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Group name',
+            hintText: 'e.g. Capstone Group 3',
             border: OutlineInputBorder(),
           ),
         ),
@@ -96,40 +500,40 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Create'),
+            child: const Text('Create Group'),
           ),
         ],
       ),
     );
 
     if (name == null || name.isEmpty) return;
-    await _run(() => _repo.createGroup(name), 'Group created.');
+    await runAction(() => _repo.createGroup(name), 'Group created.');
   }
 
-  Future<void> _registerStudent(StudentDraft draft) async {
-    await _run(() async {
+  Future<void> registerStudent(StudentDraft draft) async {
+    await runAction(() async {
       final student = await _repo.registerStudent(draft);
-      _showMessage(
+      showMessage(
         'Created ${student.name}: ${student.studentId} / ${student.password}',
       );
     }, null);
   }
 
-  Future<void> _togglePremium(CapstoneGroup group) async {
-    await _run(() => _repo.togglePremium(group), 'Premium updated.');
+  Future<void> togglePremium(CapstoneGroup group) async {
+    await runAction(() => _repo.togglePremium(group), 'Premium updated.');
   }
 
-  Future<void> _deleteStudent(
+  Future<void> deleteStudent(
     CapstoneGroup group,
     StudentAccount student,
   ) async {
-    await _run(
+    await runAction(
       () => _repo.deleteStudent(group: group, student: student),
       'Student deleted.',
     );
   }
 
-  Future<void> _logout() async {
+  Future<void> logout() async {
     await _repo.signOut();
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -138,104 +542,29 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
   }
 
-  Future<void> _run(Future<void> Function() action, String? success) async {
+  Future<void> runAction(
+    Future<void> Function() action,
+    String? success,
+  ) async {
     try {
       await action();
-      if (success != null) _showMessage(success);
+      if (success != null) showMessage(success);
     } catch (error) {
-      _showMessage(error.toString());
+      showMessage(error.toString());
     }
   }
 
-  void _showMessage(String message) {
+  void showMessage(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
-class GroupsTab extends StatelessWidget {
-  const GroupsTab({
-    super.key,
-    required this.groups,
-    required this.onCreateGroup,
-    required this.onTogglePremium,
-    required this.onDeleteStudent,
-  });
-
-  final List<CapstoneGroup> groups;
-  final VoidCallback onCreateGroup;
-  final ValueChanged<CapstoneGroup> onTogglePremium;
-  final void Function(CapstoneGroup group, StudentAccount student)
-  onDeleteStudent;
-
-  @override
-  Widget build(BuildContext context) {
-    final studentCount = groups.fold<int>(
-      0,
-      (total, group) => total + group.students.length,
-    );
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.red),
-          onPressed: onCreateGroup,
-          icon: const Icon(Icons.add),
-          label: const Text('Create Group'),
-        ),
-        const SizedBox(height: 16),
-        Text('Groups: ${groups.length}'),
-        Text('Students: $studentCount'),
-        const SizedBox(height: 16),
-        if (groups.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No groups yet. Create one first.'),
-            ),
-          ),
-        for (final group in groups)
-          Card(
-            child: ExpansionTile(
-              title: Text(group.name),
-              subtitle: Text(
-                '${group.students.length}/5 members - ${group.isPremium ? 'Premium' : 'Free'}',
-              ),
-              trailing: IconButton(
-                tooltip: 'Toggle premium',
-                onPressed: () => onTogglePremium(group),
-                icon: Icon(
-                  group.isPremium ? Icons.star : Icons.star_border,
-                  color: AppColors.gold,
-                ),
-              ),
-              children: [
-                if (group.students.isEmpty)
-                  const ListTile(title: Text('No students yet.')),
-                for (final student in group.students)
-                  ListTile(
-                    title: Text(student.name),
-                    subtitle: Text(
-                      '${student.email}\n${student.studentId} / ${student.password}',
-                    ),
-                    isThreeLine: true,
-                    trailing: IconButton(
-                      onPressed: () => onDeleteStudent(group, student),
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class RegisterStudentTab extends StatefulWidget {
-  const RegisterStudentTab({
+class RegisterStudentForm extends StatefulWidget {
+  // Separate form widget so the parent admin page handles Firebase actions,
+  // while this widget only handles text fields and validation.
+  const RegisterStudentForm({
     super.key,
     required this.groups,
     required this.onRegister,
@@ -245,61 +574,74 @@ class RegisterStudentTab extends StatefulWidget {
   final ValueChanged<StudentDraft> onRegister;
 
   @override
-  State<RegisterStudentTab> createState() => _RegisterStudentTabState();
+  State<RegisterStudentForm> createState() => _RegisterStudentFormState();
 }
 
-class _RegisterStudentTabState extends State<RegisterStudentTab> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  String? _groupId;
+class _RegisterStudentFormState extends State<RegisterStudentForm> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  String? groupId;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
+    nameController.dispose();
+    emailController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
-          controller: _nameController,
+          controller: nameController,
           decoration: const InputDecoration(
-            labelText: 'Student name',
+            labelText: 'Student Name',
+            hintText: 'Enter student name',
             border: OutlineInputBorder(),
           ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'Student email',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          value: _groupId,
-          decoration: const InputDecoration(
-            labelText: 'Assign to group',
-            border: OutlineInputBorder(),
-          ),
-          items: widget.groups
-              .map(
-                (group) =>
-                    DropdownMenuItem(value: group.id, child: Text(group.name)),
-              )
-              .toList(),
-          onChanged: (value) => setState(() => _groupId = value),
         ),
         const SizedBox(height: 16),
+        TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email Address',
+            hintText: 'student@university.edu',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<String>(
+          value: groupId,
+          decoration: const InputDecoration(
+            labelText: 'Assign to Group',
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            for (final group in widget.groups)
+              DropdownMenuItem(value: group.id, child: Text(group.name)),
+          ],
+          onChanged: (value) => setState(() => groupId = value),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            border: Border.all(color: Colors.black12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            'A unique Student ID and temporary password will be automatically generated upon registration.',
+          ),
+        ),
+        const SizedBox(height: 20),
         FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.red),
-          onPressed: _submit,
+          style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          onPressed: submit,
           icon: const Icon(Icons.person_add),
           label: const Text('Register Student'),
         ),
@@ -307,10 +649,10 @@ class _RegisterStudentTabState extends State<RegisterStudentTab> {
     );
   }
 
-  void _submit() {
-    if (_nameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _groupId == null) {
+  void submit() {
+    if (nameController.text.trim().isEmpty ||
+        emailController.text.trim().isEmpty ||
+        groupId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Complete all fields first.')),
       );
@@ -319,13 +661,13 @@ class _RegisterStudentTabState extends State<RegisterStudentTab> {
 
     widget.onRegister(
       StudentDraft(
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        groupId: _groupId!,
+        name: nameController.text.trim(),
+        email: emailController.text.trim(),
+        groupId: groupId!,
       ),
     );
 
-    _nameController.clear();
-    _emailController.clear();
+    nameController.clear();
+    emailController.clear();
   }
 }

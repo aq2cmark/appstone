@@ -3,6 +3,9 @@ import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
 import 'package:flutter/material.dart';
 
+// Shared login screen for both admins and students.
+// Admins use Firebase Auth email/password.
+// Students use the generated Student ID or email plus temporary password.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -152,6 +155,8 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
+      // If the username looks like an email, try admin login first.
+      // If it fails, the app still tries student login below.
       if (username.contains('@')) {
         final isAdmin = await _tryAdminLogin(username, password);
         if (!mounted) return;
@@ -161,6 +166,7 @@ class _LoginPageState extends State<LoginPage> {
         }
       }
 
+      // Student login checks the Firestore-generated credentials.
       final student = await _repo.signInStudent(
         usernameOrEmail: username,
         password: password,
@@ -172,6 +178,7 @@ class _LoginPageState extends State<LoginPage> {
           DashboardScreen(
             studentName: student.student.name,
             groupName: student.group.name,
+            isPremium: student.group.isPremium,
           ),
         );
       } else {
@@ -205,6 +212,8 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class AppColors {
+  // This small local palette is only used by the login screen.
+  // The rest of the app uses lib/app_colors.dart.
   static const red = Color(0xFF9E1B1F);
   static const gold = Color(0xFFA77B22);
   static const paper = Color(0xFFF4F1EF);
