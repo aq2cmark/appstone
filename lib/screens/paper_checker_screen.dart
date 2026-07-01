@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../app_colors.dart';
 
@@ -14,6 +15,7 @@ class PaperCheckerScreen extends StatefulWidget {
 class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
   // Used to show sample check results after pressing Run Basic Check.
   bool checked = false;
+  PlatformFile? selectedFile;
 
   @override
   Widget build(BuildContext context) {
@@ -53,26 +55,21 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
                             size: 56,
                           ),
                           const SizedBox(height: 12),
-                          const Text(
-                            'Tap to select document',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          Text(
+                            selectedFile?.name ?? 'Tap to select document',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'PDF, DOC, DOCX - Max 10MB',
+                          Text(
+                            selectedFile == null
+                                ? 'PDF, DOC, DOCX - Max 10MB'
+                                : fileSizeText(selectedFile!.size),
                             style: TextStyle(color: AppColors.textGrey),
                           ),
                           const SizedBox(height: 16),
                           OutlinedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'File picker not connected yet.',
-                                  ),
-                                ),
-                              );
-                            },
+                            onPressed: pickPaper,
                             icon: const Icon(Icons.folder_open),
                             label: const Text('Select File'),
                           ),
@@ -86,9 +83,7 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: () {
-                      setState(() => checked = true);
-                    },
+                    onPressed: runBasicCheck,
                     icon: const Icon(Icons.fact_check),
                     label: const Text('Run Basic Check'),
                   ),
@@ -127,5 +122,37 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> pickPaper() async {
+    // FilePicker opens the native file browser on mobile/desktop
+    // and the browser file chooser on web.
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+    setState(() {
+      selectedFile = result.files.single;
+      checked = false;
+    });
+  }
+
+  void runBasicCheck() {
+    if (selectedFile == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Select a paper first.')));
+      return;
+    }
+    setState(() => checked = true);
+  }
+
+  String fileSizeText(int bytes) {
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB selected';
+    return '${(kb / 1024).toStringAsFixed(1)} MB selected';
   }
 }

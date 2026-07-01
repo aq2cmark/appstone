@@ -40,6 +40,8 @@ class MainApp extends StatelessWidget {
         '/title-generator': (_) => const TitleGeneratorScreen(),
         '/defense-practice': (_) => const DefensePracticeScreen(),
         '/title-defense': (_) => const TitleDefenseScreen(),
+        '/oral-defense': (_) => const OralDefenseScreen(),
+        '/final-defense': (_) => const FinalDefenseScreen(),
         '/ai-workflow': (_) => const AIWorkflowScreen(),
         '/paper-checker': (_) => const PaperCheckerScreen(),
       },

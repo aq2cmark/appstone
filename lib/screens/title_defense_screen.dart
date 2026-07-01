@@ -1,28 +1,101 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as speech;
 
 import '../app_colors.dart';
 
-// Basic title defense practice flow.
-// Students answer sample panel questions one by one.
-class TitleDefenseScreen extends StatefulWidget {
+// These small wrapper screens keep routes simple in main.dart.
+// Each one reuses the same voice-enabled practice session below.
+class TitleDefenseScreen extends StatelessWidget {
   const TitleDefenseScreen({super.key});
 
   @override
-  State<TitleDefenseScreen> createState() => _TitleDefenseScreenState();
+  Widget build(BuildContext context) {
+    return const DefensePracticeSessionScreen(
+      title: 'Title Defense',
+      panelName: 'Dr. Santos',
+      panelRole: 'Panel Member',
+      questions: [
+        'What is the main problem your capstone project aims to solve?',
+        'How is your project different from existing solutions?',
+        'What technology stack will you use and why?',
+        'What are the scope and limitations of your project?',
+        'What is your expected timeline?',
+      ],
+    );
+  }
 }
 
-class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
-  final answerController = TextEditingController();
-  int questionIndex = 0;
+class OralDefenseScreen extends StatelessWidget {
+  const OralDefenseScreen({super.key});
 
-  // Edit these questions if the panel practice needs different prompts.
-  final List<String> questions = [
-    'What is the main problem your capstone project aims to solve?',
-    'How is your project different from existing solutions?',
-    'What technology stack will you use and why?',
-    'What are the scope and limitations of your project?',
-    'What is your expected timeline?',
-  ];
+  @override
+  Widget build(BuildContext context) {
+    return const DefensePracticeSessionScreen(
+      title: 'Oral Defense',
+      panelName: 'Prof. Reyes',
+      panelRole: 'Technical Panel',
+      questions: [
+        'Can you explain your system architecture?',
+        'Why did you choose your database structure?',
+        'How will users navigate the main workflow?',
+        'What are the possible security risks?',
+        'How will you test if the system works correctly?',
+      ],
+    );
+  }
+}
+
+class FinalDefenseScreen extends StatelessWidget {
+  const FinalDefenseScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const DefensePracticeSessionScreen(
+      title: 'Final Defense',
+      panelName: 'Dr. Mendoza',
+      panelRole: 'Final Panel',
+      questions: [
+        'What did your group complete in the final system?',
+        'Can you demonstrate the most important feature?',
+        'What feedback did you apply after previous defenses?',
+        'What are the final limitations of your system?',
+        'What future improvements would you recommend?',
+      ],
+    );
+  }
+}
+
+// One reusable defense practice flow.
+// Students can type answers or press the mic button to dictate an answer.
+class DefensePracticeSessionScreen extends StatefulWidget {
+  const DefensePracticeSessionScreen({
+    super.key,
+    required this.title,
+    required this.panelName,
+    required this.panelRole,
+    required this.questions,
+  });
+
+  final String title;
+  final String panelName;
+  final String panelRole;
+  final List<String> questions;
+
+  @override
+  State<DefensePracticeSessionScreen> createState() =>
+      _DefensePracticeSessionScreenState();
+}
+
+class _DefensePracticeSessionScreenState
+    extends State<DefensePracticeSessionScreen> {
+  final answerController = TextEditingController();
+  final speechToText = speech.SpeechToText();
+
+  int questionIndex = 0;
+  bool speechReady = false;
+  bool listening = false;
+  String voiceBaseAnswer = '';
+  String speechStatus = 'Tap the mic and start speaking.';
 
   // Shared tips shown under every question.
   final List<String> tips = [
@@ -33,6 +106,7 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
 
   @override
   void dispose() {
+    speechToText.stop();
     answerController.dispose();
     super.dispose();
   }
@@ -40,14 +114,14 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
   @override
   Widget build(BuildContext context) {
     final questionNumber = questionIndex + 1;
-    final progress = questionNumber / questions.length;
+    final progress = questionNumber / widget.questions.length;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        title: const Text('Title Defense'),
+        title: Text(widget.title),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -58,76 +132,31 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Question $questionNumber of ${questions.length}'),
+                  Text(
+                    'Question $questionNumber of ${widget.questions.length}',
+                  ),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: progress,
                     color: AppColors.primary,
                   ),
                   const SizedBox(height: 16),
-                  const Card(
+                  Card(
                     color: Colors.white,
                     child: ListTile(
-                      leading: CircleAvatar(
+                      leading: const CircleAvatar(
                         backgroundColor: AppColors.primary,
                         child: Text(
-                          'DS',
+                          'PM',
                           style: TextStyle(color: Colors.white),
                         ),
                       ),
-                      title: Text('Dr. Santos'),
-                      subtitle: Text('Panel Member'),
+                      title: Text(widget.panelName),
+                      subtitle: Text(widget.panelRole),
                     ),
                   ),
-                  Card(
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PANEL QUESTION',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            questions[questionIndex],
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Card(
-                    color: const Color(0xFFFFF8E7),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Tips for answering',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final tip in tips) Text('- $tip'),
-                        ],
-                      ),
-                    ),
-                  ),
+                  buildQuestionCard(),
+                  buildTipsCard(),
                   const SizedBox(height: 8),
                   TextField(
                     controller: answerController,
@@ -142,6 +171,25 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
                       border: const OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: toggleListening,
+                    icon: Icon(listening ? Icons.stop : Icons.mic),
+                    label: Text(
+                      listening ? 'Stop Listening' : 'Answer with Voice',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    speechStatus,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: listening ? AppColors.primary : AppColors.textGrey,
+                      fontWeight: listening
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   FilledButton(
                     style: FilledButton.styleFrom(
@@ -150,7 +198,7 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
                     ),
                     onPressed: nextQuestion,
                     child: Text(
-                      questionIndex == questions.length - 1
+                      questionIndex == widget.questions.length - 1
                           ? 'Finish'
                           : 'Next Question',
                     ),
@@ -164,12 +212,141 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
     );
   }
 
+  Widget buildQuestionCard() {
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'PANEL QUESTION',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.questions[questionIndex],
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildTipsCard() {
+    return Card(
+      color: const Color(0xFFFFF8E7),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tips for answering',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            for (final tip in tips) Text('- $tip'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> toggleListening() async {
+    if (listening) {
+      await speechToText.stop();
+      setState(() {
+        listening = false;
+        speechStatus = 'Voice answer stopped.';
+      });
+      return;
+    }
+
+    if (!speechReady) {
+      speechReady = await speechToText.initialize(
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            if (mounted) {
+              setState(() {
+                listening = false;
+                speechStatus = 'Voice answer stopped.';
+              });
+            }
+          }
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() {
+            listening = false;
+            speechStatus = 'Could not hear your answer.';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Speech error: ${error.errorMsg}')),
+          );
+        },
+      );
+    }
+
+    if (!speechReady) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Microphone permission was not granted.')),
+      );
+      return;
+    }
+
+    voiceBaseAnswer = answerController.text.trim();
+    setState(() {
+      listening = true;
+      speechStatus = 'Listening... your words will appear above.';
+    });
+    await speechToText.listen(
+      listenOptions: speech.SpeechListenOptions(
+        partialResults: true,
+        listenMode: speech.ListenMode.dictation,
+        listenFor: const Duration(minutes: 2),
+        pauseFor: const Duration(seconds: 5),
+      ),
+      onResult: (result) {
+        writeVoiceWords(result.recognizedWords);
+      },
+    );
+  }
+
+  void writeVoiceWords(String words) {
+    // Speech results arrive while the user is still talking.
+    // This copies them into the answer box immediately.
+    final spokenWords = words.trim();
+    final text = voiceBaseAnswer.isEmpty
+        ? spokenWords
+        : spokenWords.isEmpty
+        ? voiceBaseAnswer
+        : '$voiceBaseAnswer $spokenWords';
+
+    setState(() {
+      answerController.text = text;
+      answerController.selection = TextSelection.fromPosition(
+        TextPosition(offset: answerController.text.length),
+      );
+    });
+  }
+
   void nextQuestion() {
     // Move to the next question until the final one, then show completion.
-    if (questionIndex < questions.length - 1) {
+    if (questionIndex < widget.questions.length - 1) {
       setState(() {
         questionIndex++;
         answerController.clear();
+        voiceBaseAnswer = '';
+        speechStatus = 'Tap the mic and start speaking.';
       });
       return;
     }
@@ -178,7 +355,7 @@ class _TitleDefenseScreenState extends State<TitleDefenseScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Practice Complete'),
-        content: const Text('You finished the Title Defense practice.'),
+        content: Text('You finished the ${widget.title} practice.'),
         actions: [
           TextButton(
             onPressed: () {

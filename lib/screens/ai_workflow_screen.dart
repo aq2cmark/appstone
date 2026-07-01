@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../app_colors.dart';
 
@@ -22,6 +23,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   ];
 
   final Set<String> done = {};
+  PlatformFile? selectedPaper;
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +46,40 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                   const Text(
                     'Plan and track your capstone timeline.',
                     style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Upload Paper',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            selectedPaper?.name ??
+                                'Add your current paper so workflow suggestions can be based on it later.',
+                            style: const TextStyle(color: AppColors.textGrey),
+                          ),
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            onPressed: pickPaper,
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text('Select Paper'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   LinearProgressIndicator(
@@ -88,8 +124,12 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                     ),
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('AI suggestions coming soon.'),
+                        SnackBar(
+                          content: Text(
+                            selectedPaper == null
+                                ? 'AI suggestions coming soon. You can also upload a paper first.'
+                                : 'AI suggestions for ${selectedPaper!.name} coming soon.',
+                          ),
                         ),
                       );
                     },
@@ -103,5 +143,18 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> pickPaper() async {
+    // This only stores the selected filename for now.
+    // Later you can upload the file to Firebase Storage or send it to an AI API.
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+    setState(() => selectedPaper = result.files.single);
   }
 }

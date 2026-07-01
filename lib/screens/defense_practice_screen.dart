@@ -45,6 +45,7 @@ class DefensePracticeScreen extends StatelessWidget {
                     details: '30-45 min | 10-15 questions',
                     icon: Icons.mic_none,
                     color: AppColors.grey,
+                    onTap: () => Navigator.pushNamed(context, '/oral-defense'),
                   ),
                   PracticeModeCard(
                     title: 'Final Defense',
@@ -52,6 +53,7 @@ class DefensePracticeScreen extends StatelessWidget {
                     details: '45-60 min | 15-20 questions',
                     icon: Icons.emoji_events_outlined,
                     color: AppColors.gold,
+                    onTap: () => Navigator.pushNamed(context, '/final-defense'),
                   ),
                 ],
               ),
