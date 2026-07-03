@@ -12,11 +12,15 @@ class DashboardScreen extends StatelessWidget {
     required this.studentName,
     required this.groupName,
     required this.isPremium,
+    required this.groupId,
+    required this.studentId,
   });
 
   final String studentName;
   final String groupName;
   final bool isPremium;
+  final String groupId;
+  final String studentId;
 
   @override
   Widget build(BuildContext context) {
@@ -117,17 +121,27 @@ class DashboardScreen extends StatelessWidget {
             children: [
               Align(
                 alignment: Alignment.centerRight,
-                child: IconButton(
-                  tooltip: 'Logout',
-                  onPressed: () async {
-                    await AdminRepository().signOut();
-                    if (!context.mounted) return;
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginPage()),
-                    );
-                  },
-                  icon: const Icon(Icons.logout, color: Colors.white),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Change password',
+                      onPressed: () => showChangePasswordDialog(context),
+                      icon: const Icon(Icons.lock_reset, color: Colors.white),
+                    ),
+                    IconButton(
+                      tooltip: 'Logout',
+                      onPressed: () async {
+                        await AdminRepository().signOut();
+                        if (!context.mounted) return;
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginPage()),
+                        );
+                      },
+                      icon: const Icon(Icons.logout, color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -155,6 +169,99 @@ class DashboardScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> showChangePasswordDialog(BuildContext context) async {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    final shouldChange = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: currentController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Current password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: newController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'New password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Confirm new password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldChange != true) {
+      currentController.dispose();
+      newController.dispose();
+      confirmController.dispose();
+      return;
+    }
+
+    final currentPassword = currentController.text;
+    final newPassword = newController.text;
+    final confirmPassword = confirmController.text;
+    currentController.dispose();
+    newController.dispose();
+    confirmController.dispose();
+
+    if (newPassword != confirmPassword) {
+      showMessage(context, 'New passwords do not match.');
+      return;
+    }
+
+    try {
+      await AdminRepository().changeStudentPassword(
+        groupId: groupId,
+        studentId: studentId,
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      if (!context.mounted) return;
+      showMessage(context, 'Password changed.');
+    } catch (error) {
+      if (!context.mounted) return;
+      showMessage(context, error.toString());
+    }
+  }
+
+  void showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget buildPill(String text) {

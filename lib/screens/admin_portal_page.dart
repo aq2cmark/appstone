@@ -110,7 +110,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             const Divider(color: Colors.white24),
             navButton(0, Icons.dashboard, 'Dashboard'),
             navButton(1, Icons.person_add, 'Register Student'),
-            navButton(2, Icons.settings, 'Settings'),
             const Spacer(),
             navButton(-1, Icons.logout, 'Logout'),
             const SizedBox(height: 16),
@@ -424,13 +423,28 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                               DataCell(Text(student.studentId)),
                               DataCell(Text(student.password)),
                               DataCell(
-                                IconButton(
-                                  onPressed: () =>
-                                      deleteStudent(group, student),
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Reset password',
+                                      onPressed: () =>
+                                          resetStudentPassword(group, student),
+                                      icon: const Icon(
+                                        Icons.lock_reset,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Delete student',
+                                      onPressed: () =>
+                                          deleteStudent(group, student),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -531,6 +545,54 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       () => _repo.deleteStudent(group: group, student: student),
       'Student deleted.',
     );
+  }
+
+  Future<void> resetStudentPassword(
+    CapstoneGroup group,
+    StudentAccount student,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Student Password'),
+        content: Text('Generate a new temporary password for ${student.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final newPassword = await _repo.resetStudentPassword(
+        group: group,
+        student: student,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('New Temporary Password'),
+          content: SelectableText('${student.name}: $newPassword'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      showMessage(error.toString());
+    }
   }
 
   Future<void> logout() async {

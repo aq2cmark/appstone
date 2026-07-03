@@ -103,6 +103,87 @@ class AdminRepository {
     });
   }
 
+  // Admin reset: generate a new temporary password for one student.
+  Future<String> resetStudentPassword({
+    required CapstoneGroup group,
+    required StudentAccount student,
+  }) async {
+    final newPassword = _generatePassword(
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    await updateStudentPassword(
+      groupId: group.id,
+      studentId: student.id,
+      newPassword: newPassword,
+    );
+    return newPassword;
+  }
+
+  // Student change password: verify the old password, then save the new one.
+  Future<void> changeStudentPassword({
+    required String groupId,
+    required String studentId,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (newPassword.length < 6) {
+      throw StateError('New password must be at least 6 characters.');
+    }
+
+    final groupRef = _firestore.collection('groups').doc(groupId);
+    await _firestore.runTransaction((transaction) async {
+      final groupSnapshot = await transaction.get(groupRef);
+      if (!groupSnapshot.exists) throw StateError('Group not found.');
+
+      final group = CapstoneGroup.fromSnapshot(groupSnapshot);
+      final student = group.students.firstWhere(
+        (student) => student.id == studentId,
+        orElse: () => throw StateError('Student account not found.'),
+      );
+
+      if (student.password != currentPassword) {
+        throw StateError('Current password is incorrect.');
+      }
+
+      final updatedStudents = [
+        for (final item in group.students)
+          item.id == studentId ? item.copyWith(password: newPassword) : item,
+      ];
+
+      transaction.update(groupRef, {
+        'students': updatedStudents.map((student) => student.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Future<void> updateStudentPassword({
+    required String groupId,
+    required String studentId,
+    required String newPassword,
+  }) async {
+    final groupRef = _firestore.collection('groups').doc(groupId);
+    await _firestore.runTransaction((transaction) async {
+      final groupSnapshot = await transaction.get(groupRef);
+      if (!groupSnapshot.exists) throw StateError('Group not found.');
+
+      final group = CapstoneGroup.fromSnapshot(groupSnapshot);
+      final updatedStudents = [
+        for (final item in group.students)
+          item.id == studentId ? item.copyWith(password: newPassword) : item,
+      ];
+
+      if (!group.students.any((student) => student.id == studentId)) {
+        throw StateError('Student account not found.');
+      }
+
+      transaction.update(groupRef, {
+        'students': updatedStudents.map((student) => student.toMap()).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   Future<void> togglePremium(CapstoneGroup group) {
     return _firestore.collection('groups').doc(group.id).update({
       'isPremium': !group.isPremium,
@@ -200,6 +281,16 @@ class StudentAccount {
   final String email;
   final String studentId;
   final String password;
+
+  StudentAccount copyWith({String? password}) {
+    return StudentAccount(
+      id: id,
+      name: name,
+      email: email,
+      studentId: studentId,
+      password: password ?? this.password,
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {

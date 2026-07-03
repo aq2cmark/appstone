@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as speech;
 
 import '../app_colors.dart';
@@ -96,6 +97,7 @@ class _DefensePracticeSessionScreenState
   bool listening = false;
   String voiceBaseAnswer = '';
   String speechStatus = 'Tap the mic and start speaking.';
+  String lastRecognizedWords = '';
 
   // Shared tips shown under every question.
   final List<String> tips = [
@@ -140,6 +142,14 @@ class _DefensePracticeSessionScreenState
                     value: progress,
                     color: AppColors.primary,
                   ),
+                  if (lastRecognizedWords.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Heard: $lastRecognizedWords',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.textGrey),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Card(
                     color: Colors.white,
@@ -273,24 +283,22 @@ class _DefensePracticeSessionScreenState
     if (!speechReady) {
       speechReady = await speechToText.initialize(
         onStatus: (status) {
+          if (!mounted) return;
+          setState(() => speechStatus = 'Speech status: $status');
           if (status == 'done' || status == 'notListening') {
-            if (mounted) {
-              setState(() {
-                listening = false;
-                speechStatus = 'Voice answer stopped.';
-              });
-            }
+            setState(() => listening = false);
           }
         },
         onError: (error) {
           if (!mounted) return;
+          final message = speechErrorMessage(error.errorMsg);
           setState(() {
             listening = false;
-            speechStatus = 'Could not hear your answer.';
+            speechStatus = message;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Speech error: ${error.errorMsg}')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
         },
       );
     }
@@ -304,18 +312,28 @@ class _DefensePracticeSessionScreenState
     }
 
     voiceBaseAnswer = answerController.text.trim();
+    lastRecognizedWords = '';
     setState(() {
       listening = true;
-      speechStatus = 'Listening... your words will appear above.';
+      speechStatus = 'Listening... speak now.';
     });
     await speechToText.listen(
       listenOptions: speech.SpeechListenOptions(
         partialResults: true,
+        onDevice: !kIsWeb,
         listenMode: speech.ListenMode.dictation,
         listenFor: const Duration(minutes: 2),
-        pauseFor: const Duration(seconds: 5),
+        pauseFor: const Duration(seconds: 8),
+        cancelOnError: false,
       ),
       onResult: (result) {
+        if (!mounted) return;
+        setState(() {
+          lastRecognizedWords = result.recognizedWords;
+          speechStatus = result.finalResult
+              ? 'Final voice result received.'
+              : 'Writing your voice answer...';
+        });
         writeVoiceWords(result.recognizedWords);
       },
     );
@@ -339,6 +357,18 @@ class _DefensePracticeSessionScreenState
     });
   }
 
+  String speechErrorMessage(String code) {
+    if (code == 'network') {
+      return kIsWeb
+          ? 'Browser speech network error. Type your answer or try the mobile app/device with speech services enabled.'
+          : 'Speech network error. Check internet or install offline speech recognition on the device.';
+    }
+    if (code == 'not-allowed' || code == 'permission-denied') {
+      return 'Microphone permission was blocked. Allow microphone access and try again.';
+    }
+    return 'Speech error: $code';
+  }
+
   void nextQuestion() {
     // Move to the next question until the final one, then show completion.
     if (questionIndex < widget.questions.length - 1) {
@@ -346,6 +376,7 @@ class _DefensePracticeSessionScreenState
         questionIndex++;
         answerController.clear();
         voiceBaseAnswer = '';
+        lastRecognizedWords = '';
         speechStatus = 'Tap the mic and start speaking.';
       });
       return;

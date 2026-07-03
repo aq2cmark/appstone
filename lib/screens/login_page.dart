@@ -133,6 +133,10 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
+                  TextButton(
+                    onPressed: _isLoading ? null : _showForgotPasswordDialog,
+                    child: const Text('Forgot password?'),
+                  ),
                   const SizedBox(height: 12),
                 ],
               ),
@@ -179,6 +183,8 @@ class _LoginPageState extends State<LoginPage> {
             studentName: student.student.name,
             groupName: student.group.name,
             isPremium: student.group.isPremium,
+            groupId: student.group.id,
+            studentId: student.student.id,
           ),
         );
       } else {
@@ -188,6 +194,57 @@ class _LoginPageState extends State<LoginPage> {
       _showMessage('Login failed: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showForgotPasswordDialog() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Forgot Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Admins can receive a Firebase reset email. Students must ask an admin to reset their password from the admin panel.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Email or Student ID',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+    if (value == null || value.isEmpty) return;
+
+    if (!value.contains('@')) {
+      _showMessage('Ask your admin to reset this student password.');
+      return;
+    }
+
+    try {
+      await _repo.sendAdminPasswordReset(value);
+      _showMessage('If this is an admin email, a reset link was sent.');
+    } catch (_) {
+      _showMessage('Students must ask an admin to reset their password.');
     }
   }
 
