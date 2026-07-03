@@ -62,6 +62,11 @@ class TitleGeneratorService {
       }),
     );
 
+    if (response.statusCode == 429) {
+      throw StateError(
+        'The AI has hit its request limit for now. Please wait a bit and try again.',
+      );
+    }
     if (response.statusCode != 200) {
       throw StateError('Gemini API error (${response.statusCode}): ${response.body}');
     }

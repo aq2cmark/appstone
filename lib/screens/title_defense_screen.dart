@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as speech;
 
 import '../app_colors.dart';
+import '../services/defense_ai_service.dart';
+import 'defense_results_screen.dart';
 
 // These small wrapper screens keep routes simple in main.dart.
 // Each one reuses the same voice-enabled practice session below.
@@ -91,13 +93,26 @@ class _DefensePracticeSessionScreenState
     extends State<DefensePracticeSessionScreen> {
   final answerController = TextEditingController();
   final speechToText = speech.SpeechToText();
+  final ai = DefenseAiService();
 
-  int questionIndex = 0;
+  // The AI asks the fixed questions in order, but can insert a follow-up
+  // question when it spots a gap in an answer instead of moving on. Once
+  // satisfied, it resumes the fixed list rather than drifting off-topic.
+  static const maxQuestions = 8;
+  int genericIndex = 0;
+  String? pendingFollowUp;
+  int totalAsked = 1;
+  bool isEvaluating = false;
+  final List<QaExchange> exchanges = [];
+
   bool speechReady = false;
   bool listening = false;
   String voiceBaseAnswer = '';
   String speechStatus = 'Tap the mic and start speaking.';
   String lastRecognizedWords = '';
+
+  String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
+  bool get isFollowUp => pendingFollowUp != null;
 
   // Shared tips shown under every question.
   final List<String> tips = [
@@ -115,8 +130,7 @@ class _DefensePracticeSessionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final questionNumber = questionIndex + 1;
-    final progress = questionNumber / widget.questions.length;
+    final progress = totalAsked / maxQuestions;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -134,9 +148,7 @@ class _DefensePracticeSessionScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'Question $questionNumber of ${widget.questions.length}',
-                  ),
+                  Text('Question $totalAsked (of up to $maxQuestions)'),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: progress,
@@ -182,7 +194,7 @@ class _DefensePracticeSessionScreenState
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: toggleListening,
+                    onPressed: isEvaluating ? null : toggleListening,
                     icon: Icon(listening ? Icons.stop : Icons.mic),
                     label: Text(
                       listening ? 'Stop Listening' : 'Answer with Voice',
@@ -205,12 +217,17 @@ class _DefensePracticeSessionScreenState
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: nextQuestion,
-                    child: Text(
-                      questionIndex == widget.questions.length - 1
-                          ? 'Finish'
-                          : 'Next Question',
-                    ),
+                    onPressed: isEvaluating ? null : submitAnswer,
+                    child: isEvaluating
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Submit Answer'),
                   ),
                 ],
               ),
@@ -230,16 +247,16 @@ class _DefensePracticeSessionScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'PANEL QUESTION',
+            Text(
+              isFollowUp ? 'FOLLOW-UP QUESTION' : 'PANEL QUESTION',
               style: TextStyle(
-                color: AppColors.primary,
+                color: isFollowUp ? AppColors.gold : AppColors.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              widget.questions[questionIndex],
+              currentQuestion,
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
             ),
           ],
@@ -368,34 +385,101 @@ class _DefensePracticeSessionScreenState
     return 'Speech error: $code';
   }
 
-  void nextQuestion() {
-    // Move to the next question until the final one, then show completion.
-    if (questionIndex < widget.questions.length - 1) {
-      setState(() {
-        questionIndex++;
-        answerController.clear();
-        voiceBaseAnswer = '';
-        lastRecognizedWords = '';
-        speechStatus = 'Tap the mic and start speaking.';
-      });
+  Future<void> submitAnswer() async {
+    final answer = answerController.text.trim();
+    if (answer.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Type or speak an answer first.')),
+      );
       return;
     }
 
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Practice Complete'),
-        content: Text('You finished the ${widget.title} practice.'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text('Done'),
+    setState(() => isEvaluating = true);
+    exchanges.add(QaExchange(question: currentQuestion, answer: answer));
+
+    // Already hit the hard cap: stop asking follow-ups and move on.
+    if (totalAsked >= maxQuestions) {
+      await advancePastCurrentQuestion();
+      return;
+    }
+
+    try {
+      final followUp = await ai.evaluateAnswer(
+        panelTitle: widget.title,
+        question: currentQuestion,
+        answer: answer,
+      );
+      if (!mounted) return;
+
+      if (followUp.hasGap && followUp.followUpQuestion.isNotEmpty) {
+        setState(() {
+          pendingFollowUp = followUp.followUpQuestion;
+          totalAsked++;
+          resetAnswerInput();
+          isEvaluating = false;
+        });
+        return;
+      }
+
+      await advancePastCurrentQuestion();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => isEvaluating = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  // Satisfied with the answer (or hit the question cap): resume the fixed
+  // question list instead of drifting into more follow-ups.
+  Future<void> advancePastCurrentQuestion() async {
+    pendingFollowUp = null;
+    genericIndex++;
+    if (genericIndex >= widget.questions.length) {
+      await finishSession();
+      return;
+    }
+    setState(() {
+      totalAsked++;
+      resetAnswerInput();
+      isEvaluating = false;
+    });
+  }
+
+  void resetAnswerInput() {
+    answerController.clear();
+    voiceBaseAnswer = '';
+    lastRecognizedWords = '';
+    speechStatus = 'Tap the mic and start speaking.';
+  }
+
+  Future<void> finishSession() async {
+    try {
+      final score = await ai.scoreSession(
+        panelTitle: widget.title,
+        exchanges: exchanges,
+      );
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DefenseResultsScreen(
+            title: widget.title,
+            panelName: widget.panelName,
+            panelRole: widget.panelRole,
+            questions: widget.questions,
+            questionsAnswered: exchanges.length,
+            score: score,
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => isEvaluating = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 }
