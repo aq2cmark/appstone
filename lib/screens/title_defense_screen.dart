@@ -382,11 +382,17 @@ class _DefensePracticeSessionScreenState
     });
     await speechToText.listen(
       listenOptions: speech.SpeechListenOptions(
-        partialResults: true,
+        // Mobile speech engines can report garbled, self-repeating interim
+        // hypotheses (e.g. "bakitbakitbakit") before settling on a final
+        // answer. Only accepting finalResult below isn't enough on its own
+        // because some platforms never mark anything final until the
+        // session ends, so partial results are disabled outright here -
+        // each pause commits one clean, final chunk instead.
+        partialResults: false,
         onDevice: !kIsWeb,
         listenMode: speech.ListenMode.dictation,
         listenFor: const Duration(hours: 1),
-        pauseFor: const Duration(minutes: 10),
+        pauseFor: const Duration(seconds: 20),
         cancelOnError: false,
       ),
       onResult: (result) {
@@ -394,11 +400,8 @@ class _DefensePracticeSessionScreenState
         // Ignore results from a session that's already been replaced by a
         // restart - otherwise a late result can double up on the new text.
         if (sessionId != voiceSessionId) return;
-        setState(() {
-          speechStatus = result.finalResult
-              ? 'Final voice result received.'
-              : 'Writing your voice answer...';
-        });
+        if (!result.finalResult) return;
+        setState(() => speechStatus = 'Writing your voice answer...');
         writeVoiceWords(result.recognizedWords);
       },
     );
