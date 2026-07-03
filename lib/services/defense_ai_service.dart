@@ -92,6 +92,8 @@ class DefenseAiService {
     required String panelTitle,
     required String question,
     required String answer,
+    required int followUpsSoFarOnTopic,
+    required int maxFollowUpsPerTopic,
   }) async {
     final result = await _generateJson('''
 You are a strict capstone panelist conducting a $panelTitle practice defense.
@@ -99,9 +101,15 @@ You are a strict capstone panelist conducting a $panelTitle practice defense.
 Question asked: "$question"
 Student's answer: "$answer"
 
+This topic has already had $followUpsSoFarOnTopic follow-up question(s) out of a maximum
+of $maxFollowUpsPerTopic before the panel must move on regardless.
+
 Decide if the answer has real gaps: missing justification, vague claims, or details a
 panelist would reasonably press further on. If the answer already covers the question
-well, do not invent a follow-up just to have one.
+well, do not invent a follow-up just to have one. Also, if the student seems to genuinely
+not know the answer, is repeating themselves, or you've already pressed this same topic
+once or more, prefer to move on to a new topic instead of asking another narrow follow-up
+on the same point - set hasGap to false in that case, even if the answer wasn't perfect.
 
 Respond ONLY with JSON in this exact shape:
 {"hasGap": true or false, "followUpQuestion": "a short, specific follow-up question, or empty string if hasGap is false"}

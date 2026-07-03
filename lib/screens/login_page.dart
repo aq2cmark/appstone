@@ -1,7 +1,9 @@
 import 'package:appstone/screens/admin_portal_page.dart';
+import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Shared login screen for both admins and students.
 // Admins use Firebase Auth email/password.
@@ -178,6 +180,11 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
       if (student != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(studentIdPrefsKey, student.student.id);
+        await prefs.setString(groupIdPrefsKey, student.group.id);
+
+        if (!mounted) return;
         _goTo(
           DashboardScreen(
             studentName: student.student.name,

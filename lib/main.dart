@@ -1,7 +1,7 @@
 import 'package:appstone/firebase_options.dart';
+import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/capstone_manual_screen.dart';
 import 'package:appstone/screens/defense_practice_screen.dart';
-import 'package:appstone/screens/login_page.dart';
 import 'package:appstone/screens/title_defense_screen.dart';
 import 'package:appstone/screens/title_generator_screen.dart';
 import 'package:appstone/screens/ai_workflow_screen.dart';
@@ -32,7 +32,7 @@ class MainApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFFF3F1EF),
         useMaterial3: true,
       ),
-      home: const LoginPage(),
+      home: const AuthGate(),
       // Named routes let dashboard cards open screens by route name.
       // Add future feature pages here when your group creates new screens.
       routes: {

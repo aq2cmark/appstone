@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import 'auth_gate.dart';
 import 'login_page.dart' hide AppColors;
 
 // Student dashboard after login.
@@ -133,6 +135,9 @@ class DashboardScreen extends StatelessWidget {
                       tooltip: 'Logout',
                       onPressed: () async {
                         await AdminRepository().signOut();
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove(studentIdPrefsKey);
+                        await prefs.remove(groupIdPrefsKey);
                         if (!context.mounted) return;
                         Navigator.pushReplacement(
                           context,

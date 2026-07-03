@@ -14,6 +14,7 @@ class DefenseResultsScreen extends StatelessWidget {
     required this.panelName,
     required this.panelRole,
     required this.questions,
+    required this.maxQuestions,
     required this.questionsAnswered,
     required this.score,
   });
@@ -22,6 +23,7 @@ class DefenseResultsScreen extends StatelessWidget {
   final String panelName;
   final String panelRole;
   final List<String> questions;
+  final int maxQuestions;
   final int questionsAnswered;
   final DefenseScore score;
 
@@ -182,6 +184,7 @@ class DefenseResultsScreen extends StatelessWidget {
           panelName: panelName,
           panelRole: panelRole,
           questions: questions,
+          maxQuestions: maxQuestions,
         ),
       ),
     );

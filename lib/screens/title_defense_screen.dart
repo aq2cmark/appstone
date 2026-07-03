@@ -17,6 +17,7 @@ class TitleDefenseScreen extends StatelessWidget {
       title: 'Title Defense',
       panelName: 'Dr. Santos',
       panelRole: 'Panel Member',
+      maxQuestions: 8,
       questions: [
         'What is the main problem your capstone project aims to solve?',
         'How is your project different from existing solutions?',
@@ -37,12 +38,18 @@ class OralDefenseScreen extends StatelessWidget {
       title: 'Oral Defense',
       panelName: 'Prof. Reyes',
       panelRole: 'Technical Panel',
+      maxQuestions: 15,
       questions: [
         'Can you explain your system architecture?',
         'Why did you choose your database structure?',
         'How will users navigate the main workflow?',
         'What are the possible security risks?',
         'How will you test if the system works correctly?',
+        'What third-party libraries or APIs does your system depend on, and why did you choose them?',
+        'How does your system handle errors or unexpected input?',
+        'What would happen if your system needed to support many more users at once?',
+        'How is user data stored and protected in your system?',
+        'Walk us through what happens, step by step, when a user submits a key action in your app.',
       ],
     );
   }
@@ -57,12 +64,23 @@ class FinalDefenseScreen extends StatelessWidget {
       title: 'Final Defense',
       panelName: 'Dr. Mendoza',
       panelRole: 'Final Panel',
+      maxQuestions: 20,
       questions: [
         'What did your group complete in the final system?',
         'Can you demonstrate the most important feature?',
         'What feedback did you apply after previous defenses?',
         'What are the final limitations of your system?',
         'What future improvements would you recommend?',
+        'How does your finished system compare to your original proposal?',
+        'What was the most difficult technical problem your team solved, and how?',
+        'How did your team divide the work among members?',
+        'What would you do differently if you started this project again?',
+        'How did you validate that your system actually solves the problem you set out to solve?',
+        'What metrics or results can you show that prove your system works?',
+        'How maintainable is your codebase for someone who did not build it?',
+        'What risks or edge cases could still break your system in production?',
+        'How does your system handle a real user making a mistake?',
+        'What did each team member personally contribute and learn from this project?',
       ],
     );
   }
@@ -77,12 +95,14 @@ class DefensePracticeSessionScreen extends StatefulWidget {
     required this.panelName,
     required this.panelRole,
     required this.questions,
+    required this.maxQuestions,
   });
 
   final String title;
   final String panelName;
   final String panelRole;
   final List<String> questions;
+  final int maxQuestions;
 
   @override
   State<DefensePracticeSessionScreen> createState() =>
@@ -98,10 +118,13 @@ class _DefensePracticeSessionScreenState
   // The AI asks the fixed questions in order, but can insert a follow-up
   // question when it spots a gap in an answer instead of moving on. Once
   // satisfied, it resumes the fixed list rather than drifting off-topic.
-  static const maxQuestions = 8;
+  // Follow-ups are capped per topic too, so a student who's stuck on one
+  // question gets moved to a new topic instead of being pressed forever.
+  static const maxFollowUpsPerTopic = 2;
   int genericIndex = 0;
   String? pendingFollowUp;
   int totalAsked = 1;
+  int followUpsOnTopic = 0;
   bool isEvaluating = false;
   final List<QaExchange> exchanges = [];
 
@@ -130,7 +153,7 @@ class _DefensePracticeSessionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final progress = totalAsked / maxQuestions;
+    final progress = totalAsked / widget.maxQuestions;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -148,7 +171,7 @@ class _DefensePracticeSessionScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Question $totalAsked (of up to $maxQuestions)'),
+                  Text('Question $totalAsked (of up to ${widget.maxQuestions})'),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: progress,
@@ -296,6 +319,7 @@ class _DefensePracticeSessionScreenState
       return;
     }
 
+    var initErrorShown = false;
     if (!speechReady) {
       speechReady = await speechToText.initialize(
         onStatus: (status) {
@@ -307,6 +331,7 @@ class _DefensePracticeSessionScreenState
         },
         onError: (error) {
           if (!mounted) return;
+          initErrorShown = true;
           final message = speechErrorMessage(error.errorMsg);
           setState(() {
             listening = false;
@@ -320,9 +345,13 @@ class _DefensePracticeSessionScreenState
     }
 
     if (!speechReady) {
-      if (!mounted) return;
+      if (!mounted || initErrorShown) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission was not granted.')),
+        const SnackBar(
+          content: Text(
+            'Voice input is not available. Please type your answer instead.',
+          ),
+        ),
       );
       return;
     }
@@ -382,6 +411,11 @@ class _DefensePracticeSessionScreenState
     if (code == 'not-allowed' || code == 'permission-denied') {
       return 'Microphone permission was blocked. Allow microphone access and try again.';
     }
+    if (code == 'speech_not_supported' || code.contains('not_supported')) {
+      return kIsWeb
+          ? 'Voice input is not supported in this browser. Try Chrome or Edge, or just type your answer.'
+          : 'Voice input is not supported on this device. Please type your answer instead.';
+    }
     return 'Speech error: $code';
   }
 
@@ -397,8 +431,11 @@ class _DefensePracticeSessionScreenState
     setState(() => isEvaluating = true);
     exchanges.add(QaExchange(question: currentQuestion, answer: answer));
 
-    // Already hit the hard cap: stop asking follow-ups and move on.
-    if (totalAsked >= maxQuestions) {
+    // Already hit the hard cap, or pressed this same topic enough times:
+    // stop asking follow-ups and move to a new topic instead.
+    final atQuestionCap = totalAsked >= widget.maxQuestions;
+    final atTopicCap = followUpsOnTopic >= maxFollowUpsPerTopic;
+    if (atQuestionCap || atTopicCap) {
       await advancePastCurrentQuestion();
       return;
     }
@@ -408,6 +445,8 @@ class _DefensePracticeSessionScreenState
         panelTitle: widget.title,
         question: currentQuestion,
         answer: answer,
+        followUpsSoFarOnTopic: followUpsOnTopic,
+        maxFollowUpsPerTopic: maxFollowUpsPerTopic,
       );
       if (!mounted) return;
 
@@ -415,6 +454,7 @@ class _DefensePracticeSessionScreenState
         setState(() {
           pendingFollowUp = followUp.followUpQuestion;
           totalAsked++;
+          followUpsOnTopic++;
           resetAnswerInput();
           isEvaluating = false;
         });
@@ -431,12 +471,14 @@ class _DefensePracticeSessionScreenState
     }
   }
 
-  // Satisfied with the answer (or hit the question cap): resume the fixed
-  // question list instead of drifting into more follow-ups.
+  // Satisfied with the answer (or hit a cap): resume the fixed question
+  // list on a fresh topic rather than drifting or exceeding the limit.
   Future<void> advancePastCurrentQuestion() async {
     pendingFollowUp = null;
+    followUpsOnTopic = 0;
     genericIndex++;
-    if (genericIndex >= widget.questions.length) {
+    if (genericIndex >= widget.questions.length ||
+        totalAsked >= widget.maxQuestions) {
       await finishSession();
       return;
     }
@@ -469,6 +511,7 @@ class _DefensePracticeSessionScreenState
             panelName: widget.panelName,
             panelRole: widget.panelRole,
             questions: widget.questions,
+            maxQuestions: widget.maxQuestions,
             questionsAnswered: exchanges.length,
             score: score,
           ),

@@ -27,6 +27,13 @@ class AdminRepository {
         );
   }
 
+  // One-off group fetch, used to restore a saved student session on startup.
+  Future<CapstoneGroup?> getGroup(String groupId) async {
+    final snapshot = await _firestore.collection('groups').doc(groupId).get();
+    if (!snapshot.exists) return null;
+    return CapstoneGroup.fromSnapshot(snapshot);
+  }
+
   // Admin accounts are created in Firebase Authentication.
   Future<void> signInAdmin({required String email, required String password}) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
