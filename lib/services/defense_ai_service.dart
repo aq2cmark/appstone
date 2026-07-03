@@ -19,7 +19,8 @@ class DefenseFollowUp {
   final String followUpQuestion;
 }
 
-// The AI's rating of a full practice session across five metrics.
+// The AI's rating of a full practice session across five metrics, plus a
+// plain-language explanation of why it gave those scores.
 class DefenseScore {
   const DefenseScore({
     required this.overall,
@@ -28,6 +29,7 @@ class DefenseScore {
     required this.confidence,
     required this.completeness,
     required this.presentation,
+    required this.insights,
   });
 
   final int overall;
@@ -36,6 +38,7 @@ class DefenseScore {
   final int confidence;
   final int completeness;
   final int presentation;
+  final String insights;
 }
 
 // Runs an adaptive mock defense: decides whether each answer needs a
@@ -143,8 +146,12 @@ Rate the student's performance as integers from 0 to 100 for each metric:
 - presentation: structure and professionalism of the answers
 Also give an overall score from 0 to 100.
 
+Also write "insights": 2-4 sentences in plain language a student would understand,
+explaining WHY these scores were given. Reference specific things they actually said -
+concrete strengths and concrete weaknesses - not generic praise or criticism.
+
 Respond ONLY with JSON in this exact shape:
-{"overall": 0, "clarity": 0, "technical": 0, "confidence": 0, "completeness": 0, "presentation": 0}
+{"overall": 0, "clarity": 0, "technical": 0, "confidence": 0, "completeness": 0, "presentation": 0, "insights": "..."}
 ''');
 
     return DefenseScore(
@@ -154,6 +161,7 @@ Respond ONLY with JSON in this exact shape:
       confidence: (result['confidence'] as num?)?.toInt() ?? 0,
       completeness: (result['completeness'] as num?)?.toInt() ?? 0,
       presentation: (result['presentation'] as num?)?.toInt() ?? 0,
+      insights: result['insights'] as String? ?? '',
     );
   }
 }

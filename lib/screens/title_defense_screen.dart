@@ -131,11 +131,16 @@ class _DefensePracticeSessionScreenState
   bool speechReady = false;
   bool listening = false;
   // Only the Stop button should end a listening session. The browser/OS can
-  // still end a session on its own (timeout, brief silence), so this flag
-  // tells the status handler whether that was requested or should restart.
+  // still end a session on its own (timeout, brief silence - mobile does
+  // this far more aggressively than desktop), so this flag tells the status
+  // handler whether that was requested or should restart.
   bool userRequestedStop = false;
   String voiceBaseAnswer = '';
   String speechStatus = 'Tap the mic and start speaking.';
+  // Bumped every time a new listening session starts. A restarted session's
+  // callback checks this so a late result from the session it replaced can't
+  // still land and duplicate text on top of the new session's words.
+  int voiceSessionId = 0;
 
   String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
@@ -307,6 +312,7 @@ class _DefensePracticeSessionScreenState
   Future<void> toggleListening() async {
     if (listening) {
       userRequestedStop = true;
+      voiceSessionId++;
       await speechToText.stop();
       setState(() {
         listening = false;
@@ -367,6 +373,8 @@ class _DefensePracticeSessionScreenState
     // prior session in this same answer) so a restart never duplicates it -
     // the recognizer's own words always start counting from empty again.
     voiceBaseAnswer = answerController.text.trim();
+    voiceSessionId++;
+    final sessionId = voiceSessionId;
     if (!mounted) return;
     setState(() {
       listening = true;
@@ -383,6 +391,9 @@ class _DefensePracticeSessionScreenState
       ),
       onResult: (result) {
         if (!mounted) return;
+        // Ignore results from a session that's already been replaced by a
+        // restart - otherwise a late result can double up on the new text.
+        if (sessionId != voiceSessionId) return;
         setState(() {
           speechStatus = result.finalResult
               ? 'Final voice result received.'
@@ -434,6 +445,7 @@ class _DefensePracticeSessionScreenState
     // stale text. Always stop it before reading or clearing the answer.
     if (!listening) return;
     userRequestedStop = true;
+    voiceSessionId++;
     await speechToText.stop();
     if (mounted) setState(() => listening = false);
   }

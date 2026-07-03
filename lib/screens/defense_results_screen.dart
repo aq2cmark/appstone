@@ -143,6 +143,78 @@ class DefenseResultsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (score.insights.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Card(
+                      color: const Color(0xFFFFF8E7),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'AI INSIGHTS',
+                              style: TextStyle(
+                                color: AppColors.textGrey,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(score.insights),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Card(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'GRADING RUBRIC',
+                            style: TextStyle(
+                              color: AppColors.textGrey,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          buildRubricRow(
+                            'Clarity',
+                            'How clear and easy to understand your answers were.',
+                          ),
+                          buildRubricRow(
+                            'Technical',
+                            'The depth and accuracy of your technical explanations.',
+                          ),
+                          buildRubricRow(
+                            'Confidence',
+                            'How confident and decisive you sounded while answering.',
+                          ),
+                          buildRubricRow(
+                            'Completeness',
+                            'Whether your answers fully addressed each question asked.',
+                          ),
+                          buildRubricRow(
+                            'Presentation',
+                            'The structure and professionalism of your answers overall.',
+                            isLast: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
@@ -213,6 +285,20 @@ class DefenseResultsScreen extends StatelessWidget {
               backgroundColor: AppColors.background,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildRubricRow(String label, String description, {bool isLast = false}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(description, style: const TextStyle(color: AppColors.textGrey)),
         ],
       ),
     );
