@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../app_colors.dart';
+import '../services/title_generator_service.dart';
 
 // Simple title generator mockup.
 // It lets students select filters and shows sample/generated placeholder titles.
@@ -13,6 +16,8 @@ class TitleGeneratorScreen extends StatefulWidget {
 
 class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
   final Set<String> selected = {};
+  final _service = TitleGeneratorService();
+  bool isGenerating = false;
 
   // Edit these lists to change the available filter chips.
   final List<String> projectTypes = [
@@ -87,13 +92,13 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: showTitles,
+                    onPressed: isGenerating ? null : showTitles,
                     icon: const Icon(Icons.bolt),
                     label: const Text('Generate Titles'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: randomTitle,
+                    onPressed: isGenerating ? null : randomTitle,
                     icon: const Icon(Icons.shuffle),
                     label: const Text('Generate Random'),
                   ),
@@ -152,41 +157,92 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
     );
   }
 
-  void showTitles() {
-    final text = selected.isEmpty
-        ? 'Select at least one filter first.'
-        : 'Sample title: ${selected.first} for Capstone Project Management';
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Generated Title'),
-        content: Text(text),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+  Future<void> showTitles() async {
+    if (selected.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Generated Title'),
+          content: const Text('Select at least one filter first.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    await generateAndShow();
   }
 
-  void randomTitle() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Random Title'),
-        content: const Text(
-          'Mobile-Based Capstone Monitoring System for Students and Advisers',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+  Future<void> randomTitle() {
+    // Pick one random chip from each category so the picks still drive the prompt.
+    final random = Random();
+    setState(() {
+      selected.clear();
+      for (final options in [
+        projectTypes,
+        targetUsers,
+        problemAreas,
+        technologies,
+      ]) {
+        selected.add(options[random.nextInt(options.length)]);
+      }
+    });
+    return generateAndShow();
+  }
+
+  Future<void> generateAndShow() async {
+    setState(() => isGenerating = true);
+    try {
+      final titles = await _service.generateTitles(
+        projectTypes: projectTypes.where(selected.contains).toList(),
+        targetUsers: targetUsers.where(selected.contains).toList(),
+        problemAreas: problemAreas.where(selected.contains).toList(),
+        technologies: technologies.where(selected.contains).toList(),
+      );
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Generated Titles'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final title in titles) ...[
+                SelectableText('• $title'),
+                const SizedBox(height: 8),
+              ],
+            ],
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Generation Failed'),
+          content: Text(error.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => isGenerating = false);
+    }
   }
 }

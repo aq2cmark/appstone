@@ -1,3 +1,6 @@
+# Contains the raw Gemini API key - never commit this
+remoteconfig.template.json
+
 # Miscellaneous
 *.class
 *.log
