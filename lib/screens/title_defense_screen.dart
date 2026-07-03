@@ -130,9 +130,12 @@ class _DefensePracticeSessionScreenState
 
   bool speechReady = false;
   bool listening = false;
+  // Only the Stop button should end a listening session. The browser/OS can
+  // still end a session on its own (timeout, brief silence), so this flag
+  // tells the status handler whether that was requested or should restart.
+  bool userRequestedStop = false;
   String voiceBaseAnswer = '';
   String speechStatus = 'Tap the mic and start speaking.';
-  String lastRecognizedWords = '';
 
   String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
@@ -177,14 +180,6 @@ class _DefensePracticeSessionScreenState
                     value: progress,
                     color: AppColors.primary,
                   ),
-                  if (lastRecognizedWords.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      'Heard: $lastRecognizedWords',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textGrey),
-                    ),
-                  ],
                   const SizedBox(height: 16),
                   Card(
                     color: Colors.white,
@@ -311,6 +306,7 @@ class _DefensePracticeSessionScreenState
 
   Future<void> toggleListening() async {
     if (listening) {
+      userRequestedStop = true;
       await speechToText.stop();
       setState(() {
         listening = false;
@@ -325,8 +321,14 @@ class _DefensePracticeSessionScreenState
         onStatus: (status) {
           if (!mounted) return;
           setState(() => speechStatus = 'Speech status: $status');
-          if (status == 'done' || status == 'notListening') {
+          if (status != 'done' && status != 'notListening') return;
+          // The browser/OS can end a session on its own (timeout, a brief
+          // pause). Only actually stop if the user pressed Stop themselves -
+          // otherwise keep going by starting a fresh session.
+          if (userRequestedStop) {
             setState(() => listening = false);
+          } else {
+            startListening();
           }
         },
         onError: (error) {
@@ -356,8 +358,16 @@ class _DefensePracticeSessionScreenState
       return;
     }
 
+    userRequestedStop = false;
+    await startListening();
+  }
+
+  Future<void> startListening() async {
+    // Re-anchor on whatever text already exists (including anything from a
+    // prior session in this same answer) so a restart never duplicates it -
+    // the recognizer's own words always start counting from empty again.
     voiceBaseAnswer = answerController.text.trim();
-    lastRecognizedWords = '';
+    if (!mounted) return;
     setState(() {
       listening = true;
       speechStatus = 'Listening... speak now.';
@@ -367,14 +377,13 @@ class _DefensePracticeSessionScreenState
         partialResults: true,
         onDevice: !kIsWeb,
         listenMode: speech.ListenMode.dictation,
-        listenFor: const Duration(minutes: 2),
-        pauseFor: const Duration(seconds: 8),
+        listenFor: const Duration(hours: 1),
+        pauseFor: const Duration(minutes: 10),
         cancelOnError: false,
       ),
       onResult: (result) {
         if (!mounted) return;
         setState(() {
-          lastRecognizedWords = result.recognizedWords;
           speechStatus = result.finalResult
               ? 'Final voice result received.'
               : 'Writing your voice answer...';
@@ -419,7 +428,19 @@ class _DefensePracticeSessionScreenState
     return 'Speech error: $code';
   }
 
+  Future<void> stopListeningIfActive() async {
+    // A still-running mic session can deliver a late result after we've
+    // already moved to the next question, overwriting its answer box with
+    // stale text. Always stop it before reading or clearing the answer.
+    if (!listening) return;
+    userRequestedStop = true;
+    await speechToText.stop();
+    if (mounted) setState(() => listening = false);
+  }
+
   Future<void> submitAnswer() async {
+    await stopListeningIfActive();
+    if (!mounted) return;
     final answer = answerController.text.trim();
     if (answer.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -492,7 +513,6 @@ class _DefensePracticeSessionScreenState
   void resetAnswerInput() {
     answerController.clear();
     voiceBaseAnswer = '';
-    lastRecognizedWords = '';
     speechStatus = 'Tap the mic and start speaking.';
   }
 
