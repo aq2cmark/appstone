@@ -184,11 +184,16 @@ class AdminRepository {
     });
   }
 
-  Future<void> togglePremium(CapstoneGroup group) {
+  // Premium is one-directional: once granted it stays on, so there is no revoke path.
+  Future<void> grantPremium(CapstoneGroup group) {
     return _firestore.collection('groups').doc(group.id).update({
-      'isPremium': !group.isPremium,
+      'isPremium': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> deleteGroup(String groupId) {
+    return _firestore.collection('groups').doc(groupId).delete();
   }
 
   // Student login checks the generated credentials stored inside groups.

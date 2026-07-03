@@ -76,7 +76,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _usernameController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
-                      labelText: 'Enter your username or email',
+                      hintText: 'Enter your username or email',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -96,7 +96,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _passwordController,
                     obscureText: _hidePassword,
                     decoration: InputDecoration(
-                      labelText: 'Enter your password',
+                      hintText: 'Enter your password',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         onPressed: () {
@@ -213,7 +213,7 @@ class _LoginPageState extends State<LoginPage> {
             TextField(
               controller: controller,
               decoration: const InputDecoration(
-                labelText: 'Email or Student ID',
+                hintText: 'Email or Student ID',
                 border: OutlineInputBorder(),
               ),
             ),

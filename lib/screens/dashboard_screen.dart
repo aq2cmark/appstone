@@ -187,7 +187,7 @@ class DashboardScreen extends StatelessWidget {
               controller: currentController,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'Current password',
+                hintText: 'Current password',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -196,7 +196,7 @@ class DashboardScreen extends StatelessWidget {
               controller: newController,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'New password',
+                hintText: 'New password',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -205,7 +205,7 @@ class DashboardScreen extends StatelessWidget {
               controller: confirmController,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'Confirm new password',
+                hintText: 'Confirm new password',
                 border: OutlineInputBorder(),
               ),
             ),

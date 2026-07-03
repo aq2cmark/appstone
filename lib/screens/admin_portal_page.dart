@@ -356,19 +356,26 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 ],
               );
 
-              final premiumButton = FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: group.isPremium
-                      ? Colors.white
-                      : AppColors.gold,
-                  foregroundColor: group.isPremium
-                      ? AppColors.primary
-                      : Colors.white,
-                ),
-                onPressed: () => togglePremium(group),
-                child: Text(
-                  group.isPremium ? 'Revoke Premium' : 'Grant Premium',
-                ),
+              // Premium is one-way: once granted there is no revoke button, only the chip above.
+              final actions = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!group.isPremium)
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.gold,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => grantPremium(group),
+                      child: const Text('Grant Premium'),
+                    ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Delete group',
+                    onPressed: () => deleteGroup(group),
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                ],
               );
 
               return Container(
@@ -380,7 +387,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                         children: [
                           Expanded(child: details),
                           const SizedBox(width: 16),
-                          premiumButton,
+                          actions,
                         ],
                       )
                     : Column(
@@ -388,7 +395,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                         children: [
                           details,
                           const SizedBox(height: 14),
-                          premiumButton,
+                          actions,
                         ],
                       ),
               );
@@ -502,7 +509,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           controller: controller,
           autofocus: true,
           decoration: const InputDecoration(
-            labelText: 'Group name',
             hintText: 'e.g. Capstone Group 3',
             border: OutlineInputBorder(),
           ),
@@ -533,8 +539,34 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     }, null);
   }
 
-  Future<void> togglePremium(CapstoneGroup group) async {
-    await runAction(() => _repo.togglePremium(group), 'Premium updated.');
+  Future<void> grantPremium(CapstoneGroup group) async {
+    await runAction(() => _repo.grantPremium(group), 'Premium granted.');
+  }
+
+  Future<void> deleteGroup(CapstoneGroup group) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Group'),
+        content: Text(
+          'Delete "${group.name}" and all ${group.students.length} student accounts in it? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    await runAction(() => _repo.deleteGroup(group.id), 'Group deleted.');
   }
 
   Future<void> deleteStudent(
@@ -660,7 +692,6 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         TextField(
           controller: nameController,
           decoration: const InputDecoration(
-            labelText: 'Student Name',
             hintText: 'Enter student name',
             border: OutlineInputBorder(),
           ),
@@ -670,7 +701,6 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(
-            labelText: 'Email Address',
             hintText: 'student@university.edu',
             border: OutlineInputBorder(),
           ),
@@ -679,7 +709,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         DropdownButtonFormField<String>(
           value: groupId,
           decoration: const InputDecoration(
-            labelText: 'Assign to Group',
+            hintText: 'Assign to Group',
             border: OutlineInputBorder(),
           ),
           items: [

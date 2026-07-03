@@ -173,9 +173,8 @@ class _DefensePracticeSessionScreenState
                     maxLines: 5,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
-                      labelText:
+                      hintText:
                           'Your answer (${answerController.text.length} chars)',
-                      alignLabelWithHint: true,
                       filled: true,
                       fillColor: Colors.white,
                       border: const OutlineInputBorder(),
