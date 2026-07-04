@@ -8,7 +8,7 @@ import 'login_page.dart' hide AppColors;
 
 // Student dashboard after login.
 // It receives the student and group names from LoginPage after credentials pass.
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.studentName,
@@ -16,6 +16,7 @@ class DashboardScreen extends StatelessWidget {
     required this.isPremium,
     required this.groupId,
     required this.studentId,
+    this.mustChangePassword = false,
   });
 
   final String studentName;
@@ -23,6 +24,28 @@ class DashboardScreen extends StatelessWidget {
   final bool isPremium;
   final String groupId;
   final String studentId;
+  // True when the student signed in with an admin-issued temporary password.
+  // The dashboard then forces them to set their own password before continuing.
+  final bool mustChangePassword;
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final _repo = AdminRepository();
+  bool _promptedForTempChange = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.mustChangePassword) {
+      // Wait for the first frame so a dialog can be shown over the dashboard.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _forceTempPasswordChange();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +81,7 @@ class DashboardScreen extends StatelessWidget {
                             icon: Icons.menu_book_outlined,
                             color: AppColors.primary,
                             route: '/capstone-manual',
-                            isPremiumAccount: isPremium,
+                            isPremiumAccount: widget.isPremium,
                           ),
                           FeatureTile(
                             title: 'Title Generator',
@@ -66,7 +89,7 @@ class DashboardScreen extends StatelessWidget {
                             icon: Icons.lightbulb_outline,
                             color: AppColors.grey,
                             route: '/title-generator',
-                            isPremiumAccount: isPremium,
+                            isPremiumAccount: widget.isPremium,
                           ),
                           FeatureTile(
                             title: 'Defense Practice',
@@ -74,7 +97,7 @@ class DashboardScreen extends StatelessWidget {
                             icon: Icons.shield_outlined,
                             color: AppColors.primary,
                             route: '/defense-practice',
-                            isPremiumAccount: isPremium,
+                            isPremiumAccount: widget.isPremium,
                             requiresPremium: true,
                           ),
                           FeatureTile(
@@ -83,7 +106,7 @@ class DashboardScreen extends StatelessWidget {
                             icon: Icons.calendar_month_outlined,
                             color: AppColors.grey,
                             route: '/ai-workflow',
-                            isPremiumAccount: isPremium,
+                            isPremiumAccount: widget.isPremium,
                             requiresPremium: true,
                           ),
                           FeatureTile(
@@ -92,7 +115,7 @@ class DashboardScreen extends StatelessWidget {
                             icon: Icons.description_outlined,
                             color: AppColors.gold,
                             route: '/paper-checker',
-                            isPremiumAccount: isPremium,
+                            isPremiumAccount: widget.isPremium,
                             requiresPremium: true,
                           ),
                         ],
@@ -151,7 +174,7 @@ class DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                studentName,
+                widget.studentName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 30,
@@ -163,10 +186,10 @@ class DashboardScreen extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  buildPill(groupName),
+                  buildPill(widget.groupName),
                   buildPill('DCT'),
                   buildPill('2026-2027'),
-                  if (isPremium) buildPill('Premium'),
+                  if (widget.isPremium) buildPill('Premium'),
                 ],
               ),
             ],
@@ -243,15 +266,16 @@ class DashboardScreen extends StatelessWidget {
     newController.dispose();
     confirmController.dispose();
 
+    if (!context.mounted) return;
     if (newPassword != confirmPassword) {
       showMessage(context, 'New passwords do not match.');
       return;
     }
 
     try {
-      await AdminRepository().changeStudentPassword(
-        groupId: groupId,
-        studentId: studentId,
+      await _repo.changeStudentPassword(
+        groupId: widget.groupId,
+        studentId: widget.studentId,
         currentPassword: currentPassword,
         newPassword: newPassword,
       );
@@ -260,6 +284,88 @@ class DashboardScreen extends StatelessWidget {
     } catch (error) {
       if (!context.mounted) return;
       showMessage(context, error.toString());
+    }
+  }
+
+  // Non-dismissible prompt shown right after logging in with a temp password.
+  // The student cannot reach the rest of the app until they set a real one.
+  // Loops until the change succeeds so they can't skip it with a bad entry.
+  Future<void> _forceTempPasswordChange() async {
+    if (_promptedForTempChange) return;
+    _promptedForTempChange = true;
+
+    var done = false;
+    while (!done && mounted) {
+      final newController = TextEditingController();
+      final confirmController = TextEditingController();
+
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('Set Your Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'You logged in with a temporary password. Create your own '
+                  'password to continue.',
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    hintText: 'New password (min 6 characters)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Confirm new password',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Save Password'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final newPassword = newController.text;
+      final confirmPassword = confirmController.text;
+      newController.dispose();
+      confirmController.dispose();
+
+      if (!mounted) return;
+      if (newPassword != confirmPassword) {
+        showMessage(context, 'Passwords do not match. Please try again.');
+        continue;
+      }
+
+      try {
+        await _repo.completeTempPasswordChange(
+          groupId: widget.groupId,
+          studentId: widget.studentId,
+          newPassword: newPassword,
+        );
+        done = true;
+        if (mounted) showMessage(context, 'Password updated. You are all set!');
+      } catch (error) {
+        if (mounted) showMessage(context, error.toString());
+      }
     }
   }
 

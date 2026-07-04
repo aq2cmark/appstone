@@ -209,6 +209,11 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       (sum, group) => sum + group.students.length,
     );
     final premiumGroups = groups.where((group) => group.isPremium).length;
+    // Students who used "Forgot password" and are waiting for a reset.
+    final pendingResets = groups
+        .expand((group) => group.students)
+        .where((student) => student.resetRequested)
+        .length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -256,6 +261,27 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 ),
               ],
             ),
+            if (pendingResets > 0) ...[
+              const SizedBox(height: 20),
+              Card(
+                color: const Color(0xFFFFF1F1),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.notification_important,
+                    color: Colors.red,
+                  ),
+                  title: Text(
+                    '$pendingResets password reset '
+                    '${pendingResets == 1 ? 'request' : 'requests'} pending',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Look for the red bell next to a student, then use Reset '
+                    'password to generate a new temporary password.',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 28),
             if (groups.isEmpty)
               const Card(
@@ -307,6 +333,25 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget statusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -418,17 +463,53 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                         DataColumn(label: Text('Student Name')),
                         DataColumn(label: Text('Email')),
                         DataColumn(label: Text('Student ID')),
-                        DataColumn(label: Text('Password')),
+                        DataColumn(label: Text('Temp Password')),
+                        DataColumn(label: Text('Status')),
                         DataColumn(label: Text('Actions')),
                       ],
                       rows: [
                         for (final student in group.students)
                           DataRow(
                             cells: [
-                              DataCell(Text(student.name)),
+                              DataCell(
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Notification icon on the exact student
+                                    // who asked for a password reset, so the
+                                    // admin can spot them at a glance.
+                                    if (student.resetRequested) ...[
+                                      const Tooltip(
+                                        message: 'Password reset requested',
+                                        child: Icon(
+                                          Icons.notification_important,
+                                          color: Colors.red,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    Text(student.name),
+                                  ],
+                                ),
+                              ),
                               DataCell(Text(student.email)),
                               DataCell(Text(student.studentId)),
-                              DataCell(Text(student.password)),
+                              // Only the admin-generated temp password is shown.
+                              // If a student changed their own password it is
+                              // never surfaced here - only in [password].
+                              DataCell(SelectableText(student.tempPassword)),
+                              DataCell(
+                                student.mustChangePassword
+                                    ? statusChip(
+                                        'Temp not changed',
+                                        AppColors.gold,
+                                      )
+                                    : statusChip(
+                                        'Student set own',
+                                        Colors.green,
+                                      ),
+                              ),
                               DataCell(
                                 Row(
                                   mainAxisSize: MainAxisSize.min,

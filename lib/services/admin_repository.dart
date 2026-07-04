@@ -86,6 +86,9 @@ class AdminRepository {
         email: draft.email,
         studentId: studentId,
         password: password,
+        tempPassword: password,
+        // Fresh accounts start on a temp password and must set their own.
+        mustChangePassword: true,
       );
 
       transaction.set(counterRef, {
@@ -110,7 +113,9 @@ class AdminRepository {
     });
   }
 
-  // Admin reset: generate a new temporary password for one student.
+  // Admin reset: generate a new temporary password for one student. This makes
+  // the temp password the current login again, forces the student to change it
+  // on next login, and clears any pending "forgot password" request.
   Future<String> resetStudentPassword({
     required CapstoneGroup group,
     required StudentAccount student,
@@ -118,56 +123,103 @@ class AdminRepository {
     final newPassword = _generatePassword(
       DateTime.now().millisecondsSinceEpoch,
     );
-    await updateStudentPassword(
+    await _updateStudentInGroup(
       groupId: group.id,
       studentId: student.id,
-      newPassword: newPassword,
+      transform: (current) => current.copyWith(
+        password: newPassword,
+        tempPassword: newPassword,
+        mustChangePassword: true,
+        resetRequested: false,
+      ),
     );
     return newPassword;
   }
 
   // Student change password: verify the old password, then save the new one.
+  // The new password is stored only in [password] (never in [tempPassword]),
+  // so it is never revealed on the admin dashboard.
   Future<void> changeStudentPassword({
     required String groupId,
     required String studentId,
     required String currentPassword,
     required String newPassword,
   }) async {
-    if (newPassword.length < 6) {
-      throw StateError('New password must be at least 6 characters.');
-    }
-
-    final groupRef = _firestore.collection('groups').doc(groupId);
-    await _firestore.runTransaction((transaction) async {
-      final groupSnapshot = await transaction.get(groupRef);
-      if (!groupSnapshot.exists) throw StateError('Group not found.');
-
-      final group = CapstoneGroup.fromSnapshot(groupSnapshot);
-      final student = group.students.firstWhere(
-        (student) => student.id == studentId,
-        orElse: () => throw StateError('Student account not found.'),
-      );
-
-      if (student.password != currentPassword) {
-        throw StateError('Current password is incorrect.');
-      }
-
-      final updatedStudents = [
-        for (final item in group.students)
-          item.id == studentId ? item.copyWith(password: newPassword) : item,
-      ];
-
-      transaction.update(groupRef, {
-        'students': updatedStudents.map((student) => student.toMap()).toList(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
+    _validateNewPassword(newPassword);
+    await _updateStudentInGroup(
+      groupId: groupId,
+      studentId: studentId,
+      transform: (current) {
+        if (current.password != currentPassword) {
+          throw StateError('Current password is incorrect.');
+        }
+        return current.copyWith(
+          password: newPassword,
+          mustChangePassword: false,
+        );
+      },
+    );
   }
 
-  Future<void> updateStudentPassword({
+  // Used by the forced prompt after a student logs in with a temp password.
+  // No current-password check is needed because the student just authenticated
+  // with it; we only clear the "must change" flag and store the new password.
+  Future<void> completeTempPasswordChange({
     required String groupId,
     required String studentId,
     required String newPassword,
+  }) async {
+    _validateNewPassword(newPassword);
+    await _updateStudentInGroup(
+      groupId: groupId,
+      studentId: studentId,
+      transform: (current) => current.copyWith(
+        password: newPassword,
+        mustChangePassword: false,
+      ),
+    );
+  }
+
+  // Student-facing "forgot password": flags the account so the admin sees a
+  // reset request (an icon on the student's row). Returns the student's name
+  // when a match is found, or null when nothing matched.
+  Future<String?> requestPasswordReset(String usernameOrEmail) async {
+    final normalized = usernameOrEmail.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+
+    final snapshot = await _firestore.collection('groups').get();
+    for (final groupDoc in snapshot.docs) {
+      final group = CapstoneGroup.fromSnapshot(groupDoc);
+      for (final student in group.students) {
+        final matches =
+            student.email.toLowerCase() == normalized ||
+            student.studentId.toLowerCase() == normalized;
+        if (matches) {
+          await _updateStudentInGroup(
+            groupId: group.id,
+            studentId: student.id,
+            transform: (current) => current.copyWith(resetRequested: true),
+          );
+          return student.name;
+        }
+      }
+    }
+    return null;
+  }
+
+  void _validateNewPassword(String newPassword) {
+    if (newPassword.length < 6) {
+      throw StateError('New password must be at least 6 characters.');
+    }
+  }
+
+  // Shared transaction helper: reads the group, applies [transform] to the one
+  // matching student, and writes the students list back. Throwing inside
+  // [transform] aborts the transaction, which is how validation is enforced.
+  Future<void> _updateStudentInGroup({
+    required String groupId,
+    required String studentId,
+    required StudentAccount Function(StudentAccount current) transform,
   }) async {
     final groupRef = _firestore.collection('groups').doc(groupId);
     await _firestore.runTransaction((transaction) async {
@@ -175,14 +227,14 @@ class AdminRepository {
       if (!groupSnapshot.exists) throw StateError('Group not found.');
 
       final group = CapstoneGroup.fromSnapshot(groupSnapshot);
-      final updatedStudents = [
-        for (final item in group.students)
-          item.id == studentId ? item.copyWith(password: newPassword) : item,
-      ];
-
       if (!group.students.any((student) => student.id == studentId)) {
         throw StateError('Student account not found.');
       }
+
+      final updatedStudents = [
+        for (final item in group.students)
+          item.id == studentId ? transform(item) : item,
+      ];
 
       transaction.update(groupRef, {
         'students': updatedStudents.map((student) => student.toMap()).toList(),
@@ -270,21 +322,30 @@ class CapstoneGroup {
 
 // Data model for one student account inside a group.
 class StudentAccount {
-  const StudentAccount({
+  StudentAccount({
     required this.id,
     required this.name,
     required this.email,
     required this.studentId,
     required this.password,
-  });
+    String? tempPassword,
+    this.mustChangePassword = false,
+    this.resetRequested = false,
+  }) : tempPassword = tempPassword ?? password;
 
   factory StudentAccount.fromMap(Map<dynamic, dynamic> map) {
+    final password = map['password'] as String? ?? '';
     return StudentAccount(
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '',
       email: map['email'] as String? ?? '',
       studentId: map['studentId'] as String? ?? '',
-      password: map['password'] as String? ?? '',
+      password: password,
+      // Older records have no separate temp password; fall back to whatever
+      // password is stored so the admin still sees something to share.
+      tempPassword: map['tempPassword'] as String? ?? password,
+      mustChangePassword: map['mustChangePassword'] as bool? ?? false,
+      resetRequested: map['resetRequested'] as bool? ?? false,
     );
   }
 
@@ -292,15 +353,38 @@ class StudentAccount {
   final String name;
   final String email;
   final String studentId;
+
+  // The real, current login password. This is intentionally NOT surfaced to
+  // the admin once a student changes it - admins only ever see [tempPassword].
   final String password;
 
-  StudentAccount copyWith({String? password}) {
+  // The last temporary password the admin generated (at registration or on a
+  // reset). This is the only credential shown on the admin dashboard.
+  final String tempPassword;
+
+  // True while the account is still on an admin-issued temp password. When
+  // true the student is forced to set their own password after logging in.
+  final bool mustChangePassword;
+
+  // True when the student used "Forgot password" and is waiting on the admin.
+  // Drives the notification icon next to the student on the admin dashboard.
+  final bool resetRequested;
+
+  StudentAccount copyWith({
+    String? password,
+    String? tempPassword,
+    bool? mustChangePassword,
+    bool? resetRequested,
+  }) {
     return StudentAccount(
       id: id,
       name: name,
       email: email,
       studentId: studentId,
       password: password ?? this.password,
+      tempPassword: tempPassword ?? this.tempPassword,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      resetRequested: resetRequested ?? this.resetRequested,
     );
   }
 
@@ -311,6 +395,9 @@ class StudentAccount {
       'email': email,
       'studentId': studentId,
       'password': password,
+      'tempPassword': tempPassword,
+      'mustChangePassword': mustChangePassword,
+      'resetRequested': resetRequested,
     };
   }
 }

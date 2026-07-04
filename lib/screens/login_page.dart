@@ -192,6 +192,9 @@ class _LoginPageState extends State<LoginPage> {
             isPremium: student.group.isPremium,
             groupId: student.group.id,
             studentId: student.student.id,
+            // When true, the dashboard forces a password change on arrival
+            // because the student logged in with an admin-issued temp password.
+            mustChangePassword: student.student.mustChangePassword,
           ),
         );
       } else {
@@ -214,7 +217,9 @@ class _LoginPageState extends State<LoginPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Admins can receive a Firebase reset email. Students must ask an admin to reset their password from the admin panel.',
+              'Students: enter your Student ID or email to send a reset request '
+              'to your admin. They will generate a new temporary password for '
+              'you.\n\nAdmins: enter your email to receive a Firebase reset link.',
             ),
             const SizedBox(height: 12),
             TextField(
@@ -233,7 +238,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Continue'),
+            child: const Text('Send Request'),
           ),
         ],
       ),
@@ -242,16 +247,34 @@ class _LoginPageState extends State<LoginPage> {
     controller.dispose();
     if (value == null || value.isEmpty) return;
 
-    if (!value.contains('@')) {
-      _showMessage('Ask your admin to reset this student password.');
-      return;
-    }
-
+    setState(() => _isLoading = true);
     try {
-      await _repo.sendAdminPasswordReset(value);
-      _showMessage('If this is an admin email, a reset link was sent.');
+      // First treat it as a student (matches Student ID or student email) and
+      // notify the admin. This handles student emails too, which also contain
+      // '@', so we can't decide by the '@' sign alone.
+      final studentName = await _repo.requestPasswordReset(value);
+      if (!mounted) return;
+      if (studentName != null) {
+        _showMessage(
+          'Reset request sent for $studentName. Your admin will give you a '
+          'new temporary password.',
+        );
+        return;
+      }
+
+      // Not a student: if it looks like an email, try the admin reset flow.
+      if (value.contains('@')) {
+        await _repo.sendAdminPasswordReset(value);
+        _showMessage('If this is an admin email, a reset link was sent.');
+      } else {
+        _showMessage('No account found for that Student ID.');
+      }
     } catch (_) {
-      _showMessage('Students must ask an admin to reset their password.');
+      if (mounted) {
+        _showMessage('Could not send the request. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

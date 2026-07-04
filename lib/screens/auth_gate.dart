@@ -61,6 +61,9 @@ class _AuthGateState extends State<AuthGate> {
             isPremium: group.isPremium,
             groupId: group.id,
             studentId: student.id,
+            // A student who closed the app before changing their temp password
+            // is still prompted when their saved session is restored.
+            mustChangePassword: student.mustChangePassword,
           ),
         );
         return;
