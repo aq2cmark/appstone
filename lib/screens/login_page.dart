@@ -1,3 +1,4 @@
+import 'package:appstone/app_colors.dart';
 import 'package:appstone/screens/admin_portal_page.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/dashboard_screen.dart';
@@ -47,7 +48,7 @@ class _LoginPageState extends State<LoginPage> {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: AppColors.red,
+                      color: AppColors.primary,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Icon(Icons.menu_book, color: Colors.white, size: 48),
@@ -119,7 +120,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _signIn,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.red,
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         elevation: 6,
                         shape: RoundedRectangleBorder(
@@ -296,12 +297,4 @@ class _LoginPageState extends State<LoginPage> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
-}
-
-class AppColors {
-  // This small local palette is only used by the login screen.
-  // The rest of the app uses lib/app_colors.dart.
-  static const red = Color(0xFF9E1B1F);
-  static const gold = Color(0xFFA77B22);
-  static const paper = Color(0xFFF4F1EF);
 }

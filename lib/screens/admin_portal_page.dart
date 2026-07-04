@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
-import 'login_page.dart' hide AppColors;
+import '../widgets/icon_tile.dart';
+import '../widgets/section_header.dart';
+import 'login_page.dart';
 
 // AdminPortalPage is the main admin area.
 // It listens to Firestore groups in real time, then shows either:
@@ -162,43 +164,17 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Add a student to a capstone group and generate credentials'
         : 'Basic admin settings';
 
-    return Container(
-      width: double.infinity,
-      color: AppColors.primary,
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 24),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            if (showMenuButton) ...[
-              Builder(
-                builder: (context) => IconButton(
-                  onPressed: () => Scaffold.of(context).openDrawer(),
-                  icon: const Icon(Icons.menu, color: Colors.white),
-                ),
+    return SectionHeader(
+      title: title,
+      subtitle: subtitle,
+      leading: showMenuButton
+          ? Builder(
+              builder: (context) => IconButton(
+                onPressed: () => Scaffold.of(context).openDrawer(),
+                icon: const Icon(Icons.menu, color: Colors.white),
               ),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(subtitle, style: const TextStyle(color: Colors.white)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+            )
+          : null,
     );
   }
 
@@ -245,18 +221,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   'Total Groups',
                   groups.length.toString(),
                   Icons.groups,
+                  AppColors.primary,
                   statWidth,
                 ),
                 statCard(
                   'Total Students',
                   totalStudents.toString(),
                   Icons.person_add,
+                  AppColors.gold,
                   statWidth,
                 ),
                 statCard(
                   'Premium Groups',
                   premiumGroups.toString(),
                   Icons.workspace_premium,
+                  AppColors.primaryDark,
                   statWidth,
                 ),
               ],
@@ -264,7 +243,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             if (pendingResets > 0) ...[
               const SizedBox(height: 20),
               Card(
-                color: const Color(0xFFFFF1F1),
                 child: ListTile(
                   leading: const Icon(
                     Icons.notification_important,
@@ -297,15 +275,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
   }
 
-  Widget statCard(String label, String value, IconData icon, double width) {
+  Widget statCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+    double width,
+  ) {
     // The parent calculates width so the cards fill the row on desktop
-    // and become full-width blocks on mobile.
+    // and become full-width blocks on mobile. Same white card + icon-badge
+    // language as the student dashboard's feature cards.
     return SizedBox(
       width: width,
       child: Card(
-        color: const Color(0xFFFFF1F1),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Row(
             children: [
               Expanded(
@@ -316,7 +300,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                       label,
                       style: const TextStyle(color: AppColors.textGrey),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
                     Text(
                       value,
                       style: const TextStyle(
@@ -327,10 +311,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   ],
                 ),
               ),
-              CircleAvatar(
-                backgroundColor: AppColors.primary.withValues(alpha: 0.10),
-                child: Icon(icon, color: AppColors.primary),
-              ),
+              IconBadge(icon: icon, color: color),
             ],
           ),
         ),

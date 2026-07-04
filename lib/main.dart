@@ -1,3 +1,4 @@
+import 'package:appstone/app_colors.dart';
 import 'package:appstone/firebase_options.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/capstone_manual_screen.dart';
@@ -28,9 +29,25 @@ class MainApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'AppStone',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9E1B1F)),
-        scaffoldBackgroundColor: const Color(0xFFF3F1EF),
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
+        // One shared card look for the whole app: any Card() that doesn't
+        // override color/shape gets this, so admin and student screens
+        // that forgot to set it still match everywhere else.
+        cardTheme: const CardThemeData(
+          color: AppColors.white,
+          elevation: 1,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(18)),
+          ),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          centerTitle: false,
+        ),
       ),
       home: const AuthGate(),
       // Named routes let dashboard cards open screens by route name.

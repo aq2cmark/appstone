@@ -3,8 +3,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import '../widgets/icon_tile.dart';
+import '../widgets/section_header.dart';
 import 'auth_gate.dart';
-import 'login_page.dart' hide AppColors;
+import 'login_page.dart';
+
+// Max width the dashboard content stretches to on a wide desktop before it
+// stays centered. Wide enough to use the screen (cards spread across the row
+// instead of a narrow column) but capped so it never looks stretched on an
+// ultra-wide monitor. The header and body share it so they line up.
+const dashboardContentWidth = 1200.0;
 
 // Student dashboard after login.
 // It receives the student and group names from LoginPage after credentials pass.
@@ -62,7 +70,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
+                      constraints: const BoxConstraints(
+                        maxWidth: dashboardContentWidth,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -75,49 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          FeatureTile(
-                            title: 'Capstone Manual',
-                            subtitle: 'Read guidelines and requirements',
-                            icon: Icons.menu_book_outlined,
-                            color: AppColors.primary,
-                            route: '/capstone-manual',
-                            isPremiumAccount: widget.isPremium,
-                          ),
-                          FeatureTile(
-                            title: 'Title Generator',
-                            subtitle: 'AI-powered topic ideas',
-                            icon: Icons.lightbulb_outline,
-                            color: AppColors.grey,
-                            route: '/title-generator',
-                            isPremiumAccount: widget.isPremium,
-                          ),
-                          FeatureTile(
-                            title: 'Defense Practice',
-                            subtitle: 'Gamified simulation mode',
-                            icon: Icons.shield_outlined,
-                            color: AppColors.primary,
-                            route: '/defense-practice',
-                            isPremiumAccount: widget.isPremium,
-                            requiresPremium: true,
-                          ),
-                          FeatureTile(
-                            title: 'AI Workflow',
-                            subtitle: 'Plan and track your timeline',
-                            icon: Icons.calendar_month_outlined,
-                            color: AppColors.grey,
-                            route: '/ai-workflow',
-                            isPremiumAccount: widget.isPremium,
-                            requiresPremium: true,
-                          ),
-                          FeatureTile(
-                            title: 'Paper Checker',
-                            subtitle: 'Check compliance and format',
-                            icon: Icons.description_outlined,
-                            color: AppColors.gold,
-                            route: '/paper-checker',
-                            isPremiumAccount: widget.isPremium,
-                            requiresPremium: true,
-                          ),
+                          buildFeatureGrid(context),
                         ],
                       ),
                     ),
@@ -132,71 +100,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget buildHeader(BuildContext context) {
-    // The header is intentionally just a Container plus a few Text widgets.
-    // This keeps the student landing page close to the mockup but easy to edit.
-    return Container(
-      width: double.infinity,
-      color: AppColors.primary,
-      padding: const EdgeInsets.fromLTRB(24, 26, 24, 34),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Change password',
-                      onPressed: () => showChangePasswordDialog(context),
-                      icon: const Icon(Icons.lock_reset, color: Colors.white),
-                    ),
-                    IconButton(
-                      tooltip: 'Logout',
-                      onPressed: () async {
-                        await AdminRepository().signOut();
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.remove(studentIdPrefsKey);
-                        await prefs.remove(groupIdPrefsKey);
-                        if (!context.mounted) return;
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginPage()),
-                        );
-                      },
-                      icon: const Icon(Icons.logout, color: Colors.white),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.studentName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  buildPill(widget.groupName),
-                  buildPill('DCT'),
-                  buildPill('2026-2027'),
-                  if (widget.isPremium) buildPill('Premium'),
-                ],
-              ),
-            ],
-          ),
+    return SectionHeader(
+      title: widget.studentName,
+      maxContentWidth: dashboardContentWidth,
+      chips: [
+        widget.groupName,
+        'DCT',
+        '2026-2027',
+        if (widget.isPremium) 'Premium',
+      ],
+      actions: [
+        IconButton(
+          tooltip: 'Change password',
+          onPressed: () => showChangePasswordDialog(context),
+          icon: const Icon(Icons.lock_reset, color: Colors.white),
         ),
-      ),
+        IconButton(
+          tooltip: 'Logout',
+          onPressed: () async {
+            await AdminRepository().signOut();
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove(studentIdPrefsKey);
+            await prefs.remove(groupIdPrefsKey);
+            if (!context.mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+            );
+          },
+          icon: const Icon(Icons.logout, color: Colors.white),
+        ),
+      ],
     );
+  }
+
+  // Same card design at every screen size. We aim for a comfortable card width
+  // and fit as many columns as the space allows, then size each card to fill
+  // its share of the row exactly - so on a wide desktop the cards spread across
+  // and fill the screen, and on a phone they reflow down to one column.
+  Widget buildFeatureGrid(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 16.0;
+        const targetCardWidth = 210.0;
+        final maxWidth = constraints.maxWidth;
+        // How many ~210px cards fit across (never more than the feature count).
+        var columns = ((maxWidth + gap) / (targetCardWidth + gap)).floor();
+        columns = columns.clamp(1, _features.length);
+        // Divide the row evenly so cards fill the full width with no empty gap
+        // on the right. floor keeps rounding from bumping a card to a new row.
+        final cardWidth =
+            ((maxWidth - gap * (columns - 1)) / columns).floorToDouble();
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final feature in _features)
+              AppFeatureCard(
+                title: feature.title,
+                subtitle: feature.subtitle,
+                icon: feature.icon,
+                color: feature.color,
+                width: cardWidth,
+                locked: feature.requiresPremium && !widget.isPremium,
+                onTap: () => _openFeature(context, feature),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openFeature(BuildContext context, _FeatureDef feature) {
+    if (feature.requiresPremium && !widget.isPremium) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Avail premium to access this feature.')),
+      );
+      return;
+    }
+    Navigator.pushNamed(context, feature.route);
   }
 
   Future<void> showChangePasswordDialog(BuildContext context) async {
@@ -375,36 +358,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Widget buildPill(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
 }
 
-class FeatureTile extends StatelessWidget {
-  // Reusable dashboard row.
-  // Premium-only features call showPremiumMessage instead of opening a page.
-  const FeatureTile({
-    super.key,
+// The 5 dashboard features. Each gets a distinct on-brand color so the grid
+// reads clearly at a glance instead of repeating the same 2-3 hues.
+const _features = [
+  _FeatureDef(
+    title: 'Capstone Manual',
+    subtitle: 'Read guidelines and requirements',
+    icon: Icons.menu_book_outlined,
+    color: AppColors.primary,
+    route: '/capstone-manual',
+  ),
+  _FeatureDef(
+    title: 'Title Generator',
+    subtitle: 'AI-powered topic ideas',
+    icon: Icons.lightbulb_outline,
+    color: AppColors.gold,
+    route: '/title-generator',
+  ),
+  _FeatureDef(
+    title: 'Defense Practice',
+    subtitle: 'Gamified simulation mode',
+    icon: Icons.shield_outlined,
+    color: AppColors.primaryDark,
+    route: '/defense-practice',
+    requiresPremium: true,
+  ),
+  _FeatureDef(
+    title: 'AI Workflow',
+    subtitle: 'Plan and track your timeline',
+    icon: Icons.calendar_month_outlined,
+    color: AppColors.greyDark,
+    route: '/ai-workflow',
+    requiresPremium: true,
+  ),
+  _FeatureDef(
+    title: 'Paper Checker',
+    subtitle: 'Check compliance and format',
+    icon: Icons.description_outlined,
+    color: AppColors.grey,
+    route: '/paper-checker',
+    requiresPremium: true,
+  ),
+];
+
+class _FeatureDef {
+  const _FeatureDef({
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.color,
-    required this.isPremiumAccount,
-    this.route,
+    required this.route,
     this.requiresPremium = false,
   });
 
@@ -412,100 +417,6 @@ class FeatureTile extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color color;
-  final bool isPremiumAccount;
+  final String route;
   final bool requiresPremium;
-  final String? route;
-
-  @override
-  Widget build(BuildContext context) {
-    final locked = requiresPremium && !isPremiumAccount;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 14),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          if (locked) {
-            showPremiumMessage(context);
-            return;
-          }
-          if (route == null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('$title is not ready yet.')));
-            return;
-          }
-          Navigator.pushNamed(context, route!);
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: Colors.white, size: 30),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        if (locked)
-                          const Icon(
-                            Icons.lock_outline,
-                            size: 30,
-                            color: AppColors.gold,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: AppColors.background,
-                child: Icon(
-                  Icons.chevron_right,
-                  color: locked ? AppColors.gold : AppColors.textGrey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void showPremiumMessage(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Avail premium to access this feature.')),
-    );
-  }
 }
