@@ -1,8 +1,10 @@
 import 'package:appstone/app_colors.dart';
 import 'package:appstone/screens/admin_portal_page.dart';
+import 'package:appstone/screens/admin_signup_page.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -140,6 +142,17 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: _isLoading ? null : _showForgotPasswordDialog,
                     child: const Text('Forgot password?'),
                   ),
+                  TextButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AdminSignupPage(),
+                            ),
+                          ),
+                    child: const Text('Invited as an admin? Create your account'),
+                  ),
                   const SizedBox(height: 12),
                 ],
               ),
@@ -163,13 +176,19 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       // If the username looks like an email, try admin login first.
-      // If it fails, the app still tries student login below.
+      // If it isn't an admin auth account, the app still tries student login.
       if (username.contains('@')) {
-        final isAdmin = await _tryAdminLogin(username, password);
+        final admin = await _tryAdminLogin(username, password);
         if (!mounted) return;
-        if (isAdmin) {
-          _goTo(const AdminPortalPage());
-          return;
+        switch (admin.outcome) {
+          case _AdminOutcome.authorized:
+            _goTo(AdminPortalPage(role: admin.account!.role));
+            return;
+          case _AdminOutcome.denied:
+            _showMessage(admin.message ?? 'Admin access denied.');
+            return;
+          case _AdminOutcome.notAuthAccount:
+            break; // Not an admin login - fall through to student login.
         }
       }
 
@@ -279,12 +298,32 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<bool> _tryAdminLogin(String email, String password) async {
+  // Admin sign-in is two steps: authenticate with Firebase, then check the
+  // account is an active admin. A wrong password / non-admin email returns
+  // notAuthAccount so the caller can still try student login; a real Auth
+  // account that isn't an authorized admin is signed back out and denied.
+  Future<_AdminLoginResult> _tryAdminLogin(String email, String password) async {
+    final UserCredential credential;
     try {
-      await _repo.signInAdmin(email: email, password: password);
-      return true;
+      credential = await _repo.signInAdmin(email: email, password: password);
     } catch (_) {
-      return false;
+      return const _AdminLoginResult(_AdminOutcome.notAuthAccount);
+    }
+
+    final uid = credential.user?.uid;
+    if (uid == null) {
+      return const _AdminLoginResult(_AdminOutcome.notAuthAccount);
+    }
+
+    try {
+      final account = await _repo.resolveAdminAccess(email: email, uid: uid);
+      return _AdminLoginResult(_AdminOutcome.authorized, account: account);
+    } catch (error) {
+      await _repo.signOut();
+      return _AdminLoginResult(
+        _AdminOutcome.denied,
+        message: error is StateError ? error.message : error.toString(),
+      );
     }
   }
 
@@ -297,4 +336,19 @@ class _LoginPageState extends State<LoginPage> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+// Outcome of an admin login attempt.
+// - notAuthAccount: not a Firebase admin account (wrong password or a student);
+//   the caller should try student login next.
+// - authorized: authenticated and an active admin.
+// - denied: authenticated but not an authorized/active admin (signed back out).
+enum _AdminOutcome { notAuthAccount, authorized, denied }
+
+class _AdminLoginResult {
+  const _AdminLoginResult(this.outcome, {this.account, this.message});
+
+  final _AdminOutcome outcome;
+  final AdminAccount? account;
+  final String? message;
 }

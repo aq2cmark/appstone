@@ -34,9 +34,177 @@ class AdminRepository {
     return CapstoneGroup.fromSnapshot(snapshot);
   }
 
-  // Admin accounts are created in Firebase Authentication.
-  Future<void> signInAdmin({required String email, required String password}) {
+  // One-off fetch of all groups, used by the bulk student import to validate
+  // rows and map group names to ids.
+  Future<List<CapstoneGroup>> getGroups() async {
+    final snapshot = await _firestore
+        .collection('groups')
+        .orderBy('createdAt')
+        .get();
+    return snapshot.docs.map(CapstoneGroup.fromSnapshot).toList();
+  }
+
+  // Admin accounts are created in Firebase Authentication. Returns the
+  // credential so the caller can read the uid and then check authorization
+  // against the `admins` collection.
+  Future<UserCredential> signInAdmin({
+    required String email,
+    required String password,
+  }) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
+  }
+
+  // ---- Admin authorization + management -------------------------------------
+  //
+  // Being able to sign in with Firebase Auth is no longer enough to be an
+  // admin. Access is gated on a matching, active document in the `admins`
+  // collection (doc id = lower-cased email). This is what makes deactivating an
+  // admin instant and lets owners manage who has access from inside the app.
+
+  // Called right after a successful Firebase Auth sign-in. Returns the caller's
+  // admin account, or throws when they are not authorized. If the collection is
+  // completely empty, the first person to sign in is bootstrapped as the owner
+  // so the portal stays usable the first time this ships.
+  Future<AdminAccount> resolveAdminAccess({
+    required String email,
+    required String uid,
+  }) async {
+    final lower = email.trim().toLowerCase();
+    final ref = _firestore.collection('admins').doc(lower);
+    final snapshot = await ref.get();
+
+    if (snapshot.exists) {
+      final account = AdminAccount.fromSnapshot(snapshot);
+      if (!account.active) {
+        throw StateError(
+          'Your admin access has been deactivated. Contact an owner.',
+        );
+      }
+      // Link the Auth uid the first time this invited admin signs in.
+      if (account.uid != uid) {
+        await ref.update({
+          'uid': uid,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      return account.copyWith(uid: uid);
+    }
+
+    final anyAdmin = await _firestore.collection('admins').limit(1).get();
+    if (anyAdmin.docs.isEmpty) {
+      final name = lower.split('@').first;
+      await ref.set({
+        'email': lower,
+        'name': name,
+        'role': AdminRole.owner.name,
+        'active': true,
+        'uid': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return AdminAccount(
+        email: lower,
+        name: name,
+        role: AdminRole.owner,
+        active: true,
+        uid: uid,
+      );
+    }
+
+    throw StateError('This account is not authorized to use the admin portal.');
+  }
+
+  // Live list of admins for the owner-only management page.
+  Stream<List<AdminAccount>> adminsStream() {
+    return _firestore
+        .collection('admins')
+        .orderBy('createdAt')
+        .snapshots()
+        .map((s) => s.docs.map(AdminAccount.fromSnapshot).toList());
+  }
+
+  // Owner action: invite a new admin by email. They then create their own
+  // login through the "invited admin" sign-up screen; this only records that
+  // the email is allowed and with what role.
+  Future<void> inviteAdmin({
+    required String email,
+    required String name,
+    required AdminRole role,
+  }) async {
+    final lower = email.trim().toLowerCase();
+    if (lower.isEmpty || !lower.contains('@')) {
+      throw StateError('Enter a valid email address.');
+    }
+    final ref = _firestore.collection('admins').doc(lower);
+    final existing = await ref.get();
+    if (existing.exists) {
+      throw StateError('An admin with this email already exists.');
+    }
+    await ref.set({
+      'email': lower,
+      'name': name.trim().isEmpty ? lower : name.trim(),
+      'role': role.name,
+      'active': true,
+      'uid': null,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Owner action: turn an admin's access on or off without deleting anything.
+  Future<void> setAdminActive({required String email, required bool active}) {
+    return _firestore.collection('admins').doc(email.toLowerCase()).update({
+      'active': active,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Owner action: change an admin's role (owner can manage other admins).
+  Future<void> setAdminRole({
+    required String email,
+    required AdminRole role,
+  }) {
+    return _firestore.collection('admins').doc(email.toLowerCase()).update({
+      'role': role.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Owner action: remove the admin record entirely (e.g. a pending invite).
+  // This does NOT delete their Firebase Auth login - that is a Firebase console
+  // action - but with no active `admins` doc they can no longer get in.
+  Future<void> deleteAdmin(String email) {
+    return _firestore.collection('admins').doc(email.toLowerCase()).delete();
+  }
+
+  // Used by the "invited admin" sign-up screen. The email must already be an
+  // active invite; only then do we create the real Firebase Auth account (which
+  // signs the new admin in) and link it. Refusing first avoids creating an
+  // orphan Auth account for an un-invited email.
+  Future<AdminAccount> createInvitedAdminAccount({
+    required String email,
+    required String password,
+  }) async {
+    final lower = email.trim().toLowerCase();
+    final ref = _firestore.collection('admins').doc(lower);
+    final snapshot = await ref.get();
+    if (!snapshot.exists) {
+      throw StateError(
+        'This email has not been invited. Ask an owner to invite you first.',
+      );
+    }
+    final account = AdminAccount.fromSnapshot(snapshot);
+    if (!account.active) {
+      throw StateError('This admin invite has been deactivated.');
+    }
+
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: lower,
+      password: password,
+    );
+    final uid = credential.user!.uid;
+    await ref.update({'uid': uid, 'updatedAt': FieldValue.serverTimestamp()});
+    return account.copyWith(uid: uid);
   }
 
   // Sends Firebase's built-in password reset email for admin accounts.
@@ -49,14 +217,19 @@ class AdminRepository {
 
   // Creates a group document. Students are stored inside the group for now
   // because this prototype is simpler to understand that way.
-  Future<void> createGroup(String name) {
-    return _firestore.collection('groups').add({
+  Future<void> createGroup(String name) => createGroupReturningId(name);
+
+  // Same as createGroup but returns the new group's id, which the bulk import
+  // needs so it can immediately place students into a just-created group.
+  Future<String> createGroupReturningId(String name) async {
+    final ref = await _firestore.collection('groups').add({
       'name': name,
       'isPremium': false,
       'students': <Map<String, dynamic>>[],
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    return ref.id;
   }
 
   // Adds a student to a group and generates a simple Student ID/password.
@@ -287,6 +460,55 @@ class AdminRepository {
     ).join();
     return 'temp$code';
   }
+}
+
+// Admin roles. `owner` can manage other admins (invite / deactivate /
+// promote); `admin` can only manage students and groups.
+enum AdminRole { owner, admin }
+
+// One admin record from the `admins` collection. The doc id is the lower-cased
+// email; `uid` is filled in the first time the invited person signs in.
+class AdminAccount {
+  const AdminAccount({
+    required this.email,
+    required this.name,
+    required this.role,
+    required this.active,
+    this.uid,
+  });
+
+  factory AdminAccount.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final data = snapshot.data() ?? {};
+    return AdminAccount(
+      email: (data['email'] as String?) ?? snapshot.id,
+      name: (data['name'] as String?) ?? snapshot.id,
+      role: (data['role'] as String?) == 'owner'
+          ? AdminRole.owner
+          : AdminRole.admin,
+      active: (data['active'] as bool?) ?? true,
+      uid: data['uid'] as String?,
+    );
+  }
+
+  final String email;
+  final String name;
+  final AdminRole role;
+  final bool active;
+  final String? uid;
+
+  bool get isOwner => role == AdminRole.owner;
+  // True while the invite hasn't been claimed by a sign-up yet.
+  bool get isPending => uid == null;
+
+  AdminAccount copyWith({String? uid}) => AdminAccount(
+        email: email,
+        name: name,
+        role: role,
+        active: active,
+        uid: uid ?? this.uid,
+      );
 }
 
 // Data model for one capstone group from Firestore.

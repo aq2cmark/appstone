@@ -32,8 +32,20 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _resolve() async {
-    if (FirebaseAuth.instance.currentUser != null) {
-      _finish(const AdminPortalPage());
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // A restored Firebase session is only an admin if it still matches an
+      // active `admins` record, so a deactivated admin is kicked to login.
+      try {
+        final account = await _repo.resolveAdminAccess(
+          email: user.email ?? '',
+          uid: user.uid,
+        );
+        _finish(AdminPortalPage(role: account.role));
+      } catch (_) {
+        await _repo.signOut();
+        _finish(const LoginPage());
+      }
       return;
     }
 

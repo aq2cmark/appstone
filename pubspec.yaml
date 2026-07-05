@@ -16,6 +16,11 @@ dependencies:
   speech_to_text: ^7.4.0
   http: ^1.2.0
   shared_preferences: ^2.5.3
+  syncfusion_flutter_pdf: ^31.1.19
+  archive: ^4.0.9
+  xml: ^6.6.1
+  intl: ^0.20.2
+  csv: ^6.0.0
 
 dev_dependencies:
   flutter_test:

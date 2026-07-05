@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/section_header.dart';
+import 'admin_management_page.dart';
+import 'import_students_page.dart';
 import 'login_page.dart';
 
 // AdminPortalPage is the main admin area.
-// It listens to Firestore groups in real time, then shows either:
-// 1. the group dashboard, 2. the register student form, or 3. settings.
+// It listens to Firestore groups in real time, then shows the group dashboard,
+// the register/import student pages, and (for owners) the admin manager.
 class AdminPortalPage extends StatefulWidget {
-  const AdminPortalPage({super.key});
+  const AdminPortalPage({super.key, this.role = AdminRole.admin});
+
+  // The signed-in admin's role. Owners additionally see the Admins page.
+  final AdminRole role;
 
   @override
   State<AdminPortalPage> createState() => _AdminPortalPageState();
@@ -52,7 +59,16 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                           ? buildDashboard(groups)
                           : selectedPage == 1
                           ? buildRegisterStudent(groups)
-                          : buildSettings(),
+                          : selectedPage == 2
+                          ? ImportStudentsPage(repo: _repo, groups: groups)
+                          : selectedPage == 3 &&
+                                widget.role == AdminRole.owner
+                          ? AdminManagementPage(
+                              repo: _repo,
+                              currentEmail:
+                                  FirebaseAuth.instance.currentUser?.email ?? '',
+                            )
+                          : buildDashboard(groups),
                     ),
                   ],
                 ),
@@ -112,6 +128,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             const Divider(color: Colors.white24),
             navButton(0, Icons.dashboard, 'Dashboard'),
             navButton(1, Icons.person_add, 'Register Student'),
+            navButton(2, Icons.upload_file, 'Import Students'),
+            if (widget.role == AdminRole.owner)
+              navButton(3, Icons.admin_panel_settings, 'Admins'),
             const Spacer(),
             navButton(-1, Icons.logout, 'Logout'),
             const SizedBox(height: 16),
@@ -156,13 +175,17 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Capstone Groups Overview'
         : selectedPage == 1
         ? 'Register New Student'
-        : 'Settings';
+        : selectedPage == 2
+        ? 'Import Students'
+        : 'Manage Admins';
 
     final subtitle = selectedPage == 0
         ? 'Manage student groups and monitor premium feature subscriptions'
         : selectedPage == 1
         ? 'Add a student to a capstone group and generate credentials'
-        : 'Basic admin settings';
+        : selectedPage == 2
+        ? 'Add many students at once from an Excel or CSV roster'
+        : 'Invite admins and control who has access';
 
     return SectionHeader(
       title: title,
@@ -544,17 +567,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildSettings() {
-    return const Center(
-      child: Card(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Settings template. Add your controls here later.'),
         ),
       ),
     );
