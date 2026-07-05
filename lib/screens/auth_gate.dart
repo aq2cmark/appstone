@@ -42,9 +42,16 @@ class _AuthGateState extends State<AuthGate> {
           uid: user.uid,
         );
         _finish(AdminPortalPage(role: account.role));
-      } catch (_) {
+      } catch (error) {
         await _repo.signOut();
-        _finish(const LoginPage());
+        // Surface why the restored session was rejected instead of silently
+        // bouncing to a blank login screen - this is what made the earlier
+        // permission-denied error so hard to diagnose.
+        _finish(
+          LoginPage(
+            initialError: error is StateError ? error.message : error.toString(),
+          ),
+        );
       }
       return;
     }

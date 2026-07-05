@@ -12,7 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Admins use Firebase Auth email/password.
 // Students use the generated Student ID or email plus temporary password.
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.initialError});
+
+  // Shown once on arrival - used by AuthGate to explain why a restored
+  // session was rejected (e.g. a deactivated admin) instead of silently
+  // landing here with no context.
+  final String? initialError;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -24,6 +29,15 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _hidePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final error = widget.initialError;
+    if (error != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showMessage(error));
+    }
+  }
 
   @override
   void dispose() {

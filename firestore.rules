@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// AppStone Firestore security rules.
+//
+// Context that shapes these rules:
+//  - Admins are Firebase Auth accounts, gated by a matching active doc in the
+//    `admins` collection. This is the sensitive part and is locked down here.
+//  - Students are NOT Firebase Auth accounts. Student login and password
+//    changes are done client-side against `groups`, so reading and updating a
+//    group has to stay open. Only creating/deleting a whole group is limited to
+//    admins. (Tightening student writes further would need real student Auth
+//    accounts - out of scope.)
+//
+// IMPORTANT - bootstrapping the first owner:
+// These rules require an existing active owner to create new admin records,
+// which means the very first owner cannot be created by the app once these
+// rules are live. Before publishing this file, sign in once with your admin
+// email/password while rules are still open (or manually create your
+// `admins/{your-email}` doc in the console with role: "owner", active: true).
+// Only publish this file AFTER that first owner document exists.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // The signed-in user's email, lower-cased to match the admins doc ids.
+    function callerEmail() {
+      return request.auth != null ? request.auth.token.email.lower() : '';
+    }
+
+    function adminPath() {
+      return /databases/$(database)/documents/admins/$(callerEmail());
+    }
+
+    // An authenticated user whose admins doc exists and is active.
+    function isActiveAdmin() {
+      return request.auth != null
+        && exists(adminPath())
+        && get(adminPath()).data.active == true;
+    }
+
+    function isOwner() {
+      return isActiveAdmin() && get(adminPath()).data.role == 'owner';
+    }
+
+    // --- Admin roster: who can access the portal ---------------------------
+    match /admins/{adminEmail} {
+      // A single doc can be read unauthenticated so the sign-up screen can
+      // check "has this email been invited?" before the account exists.
+      allow get: if true;
+      // Listing the whole roster (management page) requires a signed-in admin.
+      allow list: if request.auth != null;
+
+      // Only owners create or remove admin records.
+      allow create, delete: if isOwner();
+
+      // Owners may change any field. An invited user may link their OWN uid on
+      // first sign-in, but must not change their role or active flag - this is
+      // what stops a deactivated admin from re-enabling themselves or anyone
+      // from self-promoting to owner.
+      allow update: if isOwner()
+        || (adminEmail == callerEmail()
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.active == resource.data.active);
+    }
+
+    // --- Capstone groups (with embedded student records) -------------------
+    // Open read + update so client-side student login and password changes
+    // keep working; only whole-group create/delete is admin-only.
+    match /groups/{groupId} {
+      allow read, update: if true;
+      allow create, delete: if isActiveAdmin();
+    }
+
+    // --- Student ID counter: only touched during admin registration --------
+    match /metadata/{docId} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    // Anything not matched above is denied by default.
+  }
+}
