@@ -144,6 +144,10 @@ class _DefensePracticeSessionScreenState
   // a stray late arrival from a session that already ended - ignoring it is
   // cheap insurance against the exact kind of duplicate text this is fixing.
   int voiceSessionId = 0;
+  // The plugin fires onStatus twice for a single utterance ending ('notListening'
+  // then 'done') - this stops both from scheduling their own restart, which
+  // would otherwise start two overlapping listen() sessions at once.
+  bool restartScheduled = false;
 
   String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
@@ -345,7 +349,8 @@ class _DefensePracticeSessionScreenState
           if (status == 'done' || status == 'notListening') {
             if (userStoppedListening) {
               setState(() => listening = false);
-            } else {
+            } else if (!restartScheduled) {
+              restartScheduled = true;
               restartForNextUtterance();
             }
           }
@@ -382,6 +387,7 @@ class _DefensePracticeSessionScreenState
   // finished utterance appends onto the real current text instead of
   // overwriting it with a stale snapshot from before the session started.
   Future<void> startListening() async {
+    restartScheduled = false;
     voiceBaseAnswer = answerController.text.trim();
     lastRecognizedWords = '';
     voiceSessionId++;
@@ -392,7 +398,17 @@ class _DefensePracticeSessionScreenState
     });
     await speechToText.listen(
       listenOptions: speech.SpeechListenOptions(
-        partialResults: true,
+        // On web, this plugin ties the BROWSER's own "continuous" mode
+        // directly to partialResults (see speech_to_text_web.dart) - there is
+        // no separate on/off switch for it. Mobile Chrome's continuous mode
+        // has a long-standing bug where it re-emits an already-finished
+        // phrase as a new result after a pause, which is what was doubling
+        // text on a phone's browser/home-screen shortcut. Turning
+        // partialResults off on web forces the browser to stop cleanly after
+        // one phrase instead of running its own buggy continuous session;
+        // listenMode.confirmation does the equivalent job on native Android.
+        // The restart logic above then stitches each phrase back together.
+        partialResults: !kIsWeb,
         onDevice: !kIsWeb,
         listenMode: speech.ListenMode.confirmation,
         listenFor: const Duration(seconds: 60),
