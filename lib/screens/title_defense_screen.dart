@@ -130,11 +130,20 @@ class _DefensePracticeSessionScreenState
 
   bool speechReady = false;
   bool listening = false;
-  // Text already in the box when the mic started, so the spoken words are
-  // appended onto it instead of replacing it.
+  // Text already confirmed in the box before the current utterance started,
+  // so each new utterance's words are appended onto it instead of replacing
+  // or duplicating it.
   String voiceBaseAnswer = '';
   String speechStatus = 'Tap the mic and start speaking.';
   String lastRecognizedWords = '';
+  // True only when the user pressed the mic button to stop, so we can tell
+  // that apart from one utterance ending naturally (which should restart
+  // listening, not end the whole session).
+  bool userStoppedListening = true;
+  // Bumped on every fresh listen() call. A result tagged with an older id is
+  // a stray late arrival from a session that already ended - ignoring it is
+  // cheap insurance against the exact kind of duplicate text this is fixing.
+  int voiceSessionId = 0;
 
   String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
@@ -303,11 +312,23 @@ class _DefensePracticeSessionScreenState
     );
   }
 
-  // Restored to the known-good version from commit cb76917 ("defense practice
-  // ai test"): initialize once, then a single listen() session. Whatever the
-  // recognizer reports replaces the spoken portion of the answer box.
+  // Android's SpeechRecognizer only ever recognizes ONE utterance per
+  // listen() call - "continuous dictation" is an illusion the plugin creates
+  // by silently restarting its own native session after every pause. That
+  // internal restart is opaque to this Dart code, and on some Android
+  // devices it re-delivers the tail of the just-finished utterance before
+  // starting fresh, which is what was doubling text.
+  //
+  // The fix: stop relying on that hidden native restart. Use
+  // ListenMode.confirmation, which cleanly ends (`onStatus` reports 'done')
+  // after each single utterance, then explicitly start a brand new listen()
+  // ourselves for the next one - snapshotting the box's current text fresh
+  // each time. From the user's side it still feels like one continuous
+  // session; the difference is every restart is now something this code
+  // controls instead of something the OS does invisibly.
   Future<void> toggleListening() async {
     if (listening) {
+      userStoppedListening = true;
       await speechToText.stop();
       setState(() {
         listening = false;
@@ -322,7 +343,11 @@ class _DefensePracticeSessionScreenState
           if (!mounted) return;
           setState(() => speechStatus = 'Speech status: $status');
           if (status == 'done' || status == 'notListening') {
-            setState(() => listening = false);
+            if (userStoppedListening) {
+              setState(() => listening = false);
+            } else {
+              restartForNextUtterance();
+            }
           }
         },
         onError: (error) {
@@ -347,8 +372,20 @@ class _DefensePracticeSessionScreenState
       return;
     }
 
+    userStoppedListening = false;
+    await startListening();
+  }
+
+  // Starts recognizing exactly one utterance. voiceBaseAnswer is captured
+  // fresh right here, every time, from whatever is currently in the answer
+  // box - not once for the whole session like before - so a restart after a
+  // finished utterance appends onto the real current text instead of
+  // overwriting it with a stale snapshot from before the session started.
+  Future<void> startListening() async {
     voiceBaseAnswer = answerController.text.trim();
     lastRecognizedWords = '';
+    voiceSessionId++;
+    final currentSession = voiceSessionId;
     setState(() {
       listening = true;
       speechStatus = 'Listening... speak now.';
@@ -357,13 +394,13 @@ class _DefensePracticeSessionScreenState
       listenOptions: speech.SpeechListenOptions(
         partialResults: true,
         onDevice: !kIsWeb,
-        listenMode: speech.ListenMode.dictation,
-        listenFor: const Duration(minutes: 2),
-        pauseFor: const Duration(seconds: 8),
+        listenMode: speech.ListenMode.confirmation,
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 3),
         cancelOnError: false,
       ),
       onResult: (result) {
-        if (!mounted) return;
+        if (!mounted || currentSession != voiceSessionId) return;
         setState(() {
           lastRecognizedWords = result.recognizedWords;
           speechStatus = result.finalResult
@@ -373,6 +410,15 @@ class _DefensePracticeSessionScreenState
         writeVoiceWords(result.recognizedWords);
       },
     );
+  }
+
+  // Called when one utterance ends naturally (the user paused) while they're
+  // still holding the mic on. The short delay avoids restarting into the
+  // tail end of the same pause the recognizer just detected.
+  Future<void> restartForNextUtterance() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted || userStoppedListening) return;
+    await startListening();
   }
 
   void writeVoiceWords(String words) {
