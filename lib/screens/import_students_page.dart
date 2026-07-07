@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -50,10 +51,12 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'The file needs three columns in the first row: Name, Email, '
-                  'and Group. Each student is auto-assigned a Student ID and a '
-                  'temporary password. Groups named in the file are created if '
-                  'they do not exist yet (max 5 members each).',
+                  'Download the template, replace the example rows with your '
+                  'students, then upload the file here. It needs three columns '
+                  'in the first row: Name, Email, and Group. Each student is '
+                  'auto-assigned a Student ID and a temporary password. Groups '
+                  'named in the file are created if they do not exist yet '
+                  '(max 5 members each).',
                   style: TextStyle(color: AppColors.textGrey),
                 ),
                 const SizedBox(height: 16),
@@ -70,9 +73,9 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                       label: Text(_fileName == null ? 'Select File' : 'Change File'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _copyTemplate,
-                      icon: const Icon(Icons.description_outlined),
-                      label: const Text('Copy template'),
+                      onPressed: _downloadTemplate,
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download Template (.xlsx)'),
                     ),
                   ],
                 ),
@@ -386,12 +389,26 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
     });
   }
 
-  Future<void> _copyTemplate() async {
-    const template =
-        'Name,Email,Group\nJuan Cruz,juan.cruz@dct.edu,Capstone Group 1\n'
-        'Maria Reyes,maria.reyes@dct.edu,Capstone Group 1\n';
-    await Clipboard.setData(const ClipboardData(text: template));
-    if (mounted) _snack('Template copied. Paste it into Excel and fill it in.');
+  // Saves a ready-to-edit .xlsx roster template. On web this triggers a
+  // browser download (and always returns null); on desktop/mobile it opens a
+  // save dialog, where null means the admin cancelled.
+  Future<void> _downloadTemplate() async {
+    try {
+      final bytes = _service.buildTemplateXlsx();
+      final path = await FilePicker.saveFile(
+        dialogTitle: 'Save student import template',
+        fileName: 'student_import_template.xlsx',
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        bytes: bytes,
+      );
+      if (!kIsWeb && path == null) return;
+      if (mounted) {
+        _snack('Template saved. Open it in Excel, fill it in, then upload it here.');
+      }
+    } catch (error) {
+      if (mounted) _snack('Could not save the template: $error');
+    }
   }
 
   Future<void> _copyCredentials(StudentImportResult result) async {

@@ -130,4 +130,25 @@ void main() {
       throwsA(isA<ImportException>()),
     );
   });
+
+  // The downloadable template must round-trip through this service's own
+  // xlsx reader: headers recognized, example rows parsed intact.
+  test('generated template parses back with its example rows', () {
+    final rows = svc.parse(
+      bytes: svc.buildTemplateXlsx(),
+      extension: 'xlsx',
+    );
+
+    expect(rows.length, 3);
+    expect(rows[0].name, 'Juan Cruz');
+    expect(rows[0].email, 'juan.cruz@dct.edu');
+    expect(rows[0].group, 'Capstone Group 1');
+    expect(rows[2].name, 'Pedro Santos');
+    expect(rows[2].group, 'Capstone Group 2');
+
+    // And the example rows validate as importable against empty groups.
+    final preview = svc.validate(rows, const []);
+    expect(preview.validCount, 3);
+    expect(preview.groupsToCreate, ['Capstone Group 1', 'Capstone Group 2']);
+  });
 }

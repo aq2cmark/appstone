@@ -198,6 +198,91 @@ class StudentImportService {
     return StudentImportResult(created: created, failures: failures);
   }
 
+  // ---- Template download ------------------------------------------------------
+
+  // Builds the downloadable .xlsx roster template: the three required headers
+  // plus example rows the admin overwrites with real students. Written with
+  // the same archive + xml approach as the reader above (an .xlsx is a ZIP of
+  // XML parts), so no extra dependency is needed. Cell text uses inline
+  // strings, which both Excel and this service's own parser understand.
+  Uint8List buildTemplateXlsx() {
+    const contentTypes =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>';
+
+    const rootRels =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>';
+
+    const workbook =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Students" sheetId="1" r:id="rId1"/></sheets>'
+        '</workbook>';
+
+    const workbookRels =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '</Relationships>';
+
+    final sheet = _templateSheetXml(const [
+      ['Name', 'Email', 'Group'],
+      ['Juan Cruz', 'juan.cruz@dct.edu', 'Capstone Group 1'],
+      ['Maria Reyes', 'maria.reyes@dct.edu', 'Capstone Group 1'],
+      ['Pedro Santos', 'pedro.santos@dct.edu', 'Capstone Group 2'],
+    ]);
+
+    final archive = Archive()
+      ..addFile(_textEntry('[Content_Types].xml', contentTypes))
+      ..addFile(_textEntry('_rels/.rels', rootRels))
+      ..addFile(_textEntry('xl/workbook.xml', workbook))
+      ..addFile(_textEntry('xl/_rels/workbook.xml.rels', workbookRels))
+      ..addFile(_textEntry('xl/worksheets/sheet1.xml', sheet));
+
+    return Uint8List.fromList(ZipEncoder().encode(archive));
+  }
+
+  String _templateSheetXml(List<List<String>> rows) {
+    final buffer = StringBuffer(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      // Widen the three columns so the sample emails/groups aren't cut off.
+      '<cols><col min="1" max="3" width="26" customWidth="1"/></cols>'
+      '<sheetData>',
+    );
+    for (var r = 0; r < rows.length; r++) {
+      buffer.write('<row r="${r + 1}">');
+      for (var c = 0; c < rows[r].length; c++) {
+        final ref = '${String.fromCharCode(65 + c)}${r + 1}';
+        buffer.write(
+          '<c r="$ref" t="inlineStr"><is><t>${_escapeXml(rows[r][c])}</t></is></c>',
+        );
+      }
+      buffer.write('</row>');
+    }
+    buffer.write('</sheetData></worksheet>');
+    return buffer.toString();
+  }
+
+  String _escapeXml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+  ArchiveFile _textEntry(String name, String content) {
+    final data = utf8.encode(content);
+    return ArchiveFile(name, data.length, data);
+  }
+
   // ---- Row -> student mapping (shared by xlsx and csv) ----------------------
 
   List<ParsedStudentRow> _rowsToStudents(List<List<String>> rows) {
