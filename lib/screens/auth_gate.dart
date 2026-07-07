@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/admin_repository.dart';
+import 'admin_claim_page.dart';
 import 'admin_portal_page.dart';
 import 'dashboard_screen.dart';
 import 'login_page.dart';
@@ -32,6 +33,15 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _resolve() async {
+    // An admin arriving via the "verify your email" link sent from
+    // AdminSignupPage takes priority over any restored session: this is a
+    // fresh claim attempt, not a normal app open.
+    final currentLink = Uri.base.toString();
+    if (_repo.isAdminClaimLink(currentLink)) {
+      _finish(AdminClaimPage(emailLink: currentLink));
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       // A restored Firebase session is only an admin if it still matches an

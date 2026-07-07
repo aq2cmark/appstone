@@ -1,14 +1,18 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
-import 'admin_portal_page.dart';
 
-// Sign-up screen for someone an owner has invited by email. It only succeeds if
-// the email is already an active invite in the `admins` collection, so nobody
-// can grant themselves admin access. On success the new admin is signed in and
-// sent straight to the portal.
+// Prefs key so AdminClaimPage (the link-landing step) can recover which email
+// requested the link, letting a same-browser click skip re-entering it.
+const adminClaimEmailPrefsKey = 'adminClaimEmail';
+
+// Sign-up screen for someone an owner has invited by email. This only ever
+// sends a Firebase "sign in with email link" to the invited address - it
+// never creates the account directly - so nobody can claim an admin invite
+// just by knowing or guessing the email. The invitee finishes creating the
+// account by opening that link (handled by AdminClaimPage).
 class AdminSignupPage extends StatefulWidget {
   const AdminSignupPage({super.key});
 
@@ -19,16 +23,13 @@ class AdminSignupPage extends StatefulWidget {
 class _AdminSignupPageState extends State<AdminSignupPage> {
   final _repo = AdminRepository();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
   bool _busy = false;
   String? _error;
+  String? _sentTo;
 
   @override
   void dispose() {
     _emailController.dispose();
-    _passwordController.dispose();
-    _confirmController.dispose();
     super.dispose();
   }
 
@@ -48,53 +49,7 @@ class _AdminSignupPageState extends State<AdminSignupPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Use the email an owner invited. If it has not been invited '
-                  'yet, ask an owner to add you first.',
-                  style: TextStyle(color: AppColors.textGrey),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Invited email',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New password (min 6 characters)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _confirmController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm password',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(_error!, style: const TextStyle(color: AppColors.primary)),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: _busy ? null : _submit,
-                  child: Text(_busy ? 'Creating...' : 'Create Account'),
-                ),
-              ],
+              children: _sentTo == null ? _buildForm() : _buildSent(),
             ),
           ),
         ),
@@ -102,21 +57,67 @@ class _AdminSignupPageState extends State<AdminSignupPage> {
     );
   }
 
-  Future<void> _submit() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    final confirm = _confirmController.text;
+  List<Widget> _buildForm() {
+    return [
+      const Text(
+        'Use the email an owner invited. If it has not been invited yet, ask '
+        'an owner to add you first. We will email you a verification link to '
+        'confirm it is really you before you can set a password.',
+        style: TextStyle(color: AppColors.textGrey),
+      ),
+      const SizedBox(height: 20),
+      TextField(
+        controller: _emailController,
+        keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(
+          labelText: 'Invited email',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: 14),
+        Text(_error!, style: const TextStyle(color: AppColors.primary)),
+      ],
+      const SizedBox(height: 20),
+      FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        onPressed: _busy ? null : _sendLink,
+        child: Text(_busy ? 'Sending...' : 'Send Verification Link'),
+      ),
+    ];
+  }
 
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Enter your invited email and a password.');
-      return;
-    }
-    if (password.length < 6) {
-      setState(() => _error = 'Password must be at least 6 characters.');
-      return;
-    }
-    if (password != confirm) {
-      setState(() => _error = 'Passwords do not match.');
+  List<Widget> _buildSent() {
+    return [
+      const Icon(Icons.mark_email_read_outlined, size: 48, color: AppColors.primary),
+      const SizedBox(height: 16),
+      Text(
+        'We sent a verification link to $_sentTo.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Open it on this device to finish creating your account. If it does '
+        'not arrive in a minute or two, check spam.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: AppColors.textGrey),
+      ),
+      const SizedBox(height: 20),
+      OutlinedButton(
+        onPressed: _busy ? null : _sendLink,
+        child: const Text('Resend link'),
+      ),
+    ];
+  }
+
+  Future<void> _sendLink() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Enter your invited email.');
       return;
     }
 
@@ -126,19 +127,11 @@ class _AdminSignupPageState extends State<AdminSignupPage> {
     });
 
     try {
-      final account = await _repo.createInvitedAdminAccount(
-        email: email,
-        password: password,
-      );
+      await _repo.sendAdminClaimLink(email);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(adminClaimEmailPrefsKey, email.toLowerCase());
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => AdminPortalPage(role: account.role)),
-        (route) => false,
-      );
-    } on FirebaseAuthException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = _authMessage(error));
+      setState(() => _sentTo = email);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -146,20 +139,6 @@ class _AdminSignupPageState extends State<AdminSignupPage> {
       });
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  String _authMessage(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'email-already-in-use':
-        return 'An account with this email already exists. Please sign in '
-            'instead.';
-      case 'weak-password':
-        return 'Password is too weak. Use at least 6 characters.';
-      case 'invalid-email':
-        return 'That email address is not valid.';
-      default:
-        return error.message ?? 'Could not create the account.';
     }
   }
 }

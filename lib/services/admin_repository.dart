@@ -177,17 +177,28 @@ class AdminRepository {
     return _firestore.collection('admins').doc(email.toLowerCase()).delete();
   }
 
-  // Used by the "invited admin" sign-up screen. The email must already be an
-  // active invite; only then do we create the real Firebase Auth account (which
-  // signs the new admin in) and link it. Refusing first avoids creating an
-  // orphan Auth account for an un-invited email.
-  Future<AdminAccount> createInvitedAdminAccount({
-    required String email,
-    required String password,
-  }) async {
+  // ---- Admin invite claim via email link -------------------------------------
+  //
+  // Claiming an invite used to be "type the invited email + a new password",
+  // which meant anyone who merely knew or guessed an invited email could
+  // create the account themselves before the real person did. Claiming now
+  // requires proving inbox ownership first via Firebase's passwordless
+  // "sign in with email link": the link is emailed by Firebase directly to the
+  // invited address, so only someone who can read that inbox can ever obtain
+  // it. Only after signing in with that link can a password be set and the
+  // uid linked onto the invited `admins` doc.
+
+  bool isAdminClaimLink(String link) => _auth.isSignInWithEmailLink(link);
+
+  // Step 1: send the verification link. Checked against the invite first so
+  // an un-invited or deactivated email gets an immediate, clear error instead
+  // of silently receiving nothing.
+  Future<void> sendAdminClaimLink(String email) async {
     final lower = email.trim().toLowerCase();
-    final ref = _firestore.collection('admins').doc(lower);
-    final snapshot = await ref.get();
+    if (lower.isEmpty || !lower.contains('@')) {
+      throw StateError('Enter a valid email address.');
+    }
+    final snapshot = await _firestore.collection('admins').doc(lower).get();
     if (!snapshot.exists) {
       throw StateError(
         'This email has not been invited. Ask an owner to invite you first.',
@@ -198,13 +209,55 @@ class AdminRepository {
       throw StateError('This admin invite has been deactivated.');
     }
 
-    final credential = await _auth.createUserWithEmailAndPassword(
+    await _auth.sendSignInLinkToEmail(
       email: lower,
-      password: password,
+      actionCodeSettings: ActionCodeSettings(
+        url: Uri.base.origin,
+        handleCodeInApp: true,
+      ),
     );
-    final uid = credential.user!.uid;
-    await ref.update({'uid': uid, 'updatedAt': FieldValue.serverTimestamp()});
-    return account.copyWith(uid: uid);
+  }
+
+  // Step 2: called after the invitee opens the link. Signing in with it is
+  // Firebase's proof they control the inbox; only then do we set the password
+  // and link their uid onto the invited doc. Re-checks the invite (not just
+  // relying on step 1) in case it was revoked in between, and signs back out
+  // on any failure so a rejected claim doesn't leave a half-authorized session.
+  Future<AdminAccount> completeAdminClaim({
+    required String email,
+    required String emailLink,
+    required String password,
+  }) async {
+    final lower = email.trim().toLowerCase();
+    final credential = await _auth.signInWithEmailLink(
+      email: lower,
+      emailLink: emailLink,
+    );
+    final user = credential.user!;
+
+    try {
+      final ref = _firestore.collection('admins').doc(lower);
+      final snapshot = await ref.get();
+      if (!snapshot.exists) {
+        throw StateError(
+          'This email has not been invited. Ask an owner to invite you first.',
+        );
+      }
+      final account = AdminAccount.fromSnapshot(snapshot);
+      if (!account.active) {
+        throw StateError('This admin invite has been deactivated.');
+      }
+
+      await user.updatePassword(password);
+      await ref.update({
+        'uid': user.uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return account.copyWith(uid: user.uid);
+    } catch (_) {
+      await _auth.signOut();
+      rethrow;
+    }
   }
 
   // Sends Firebase's built-in password reset email for admin accounts.

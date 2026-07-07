@@ -49,8 +49,9 @@ class AdminManagementPage extends StatelessWidget {
                     const SizedBox(height: 8),
                     const Text(
                       'Invite an admin by email. They then open "Invited as an '
-                      'admin? Create your account" on the login screen to set '
-                      'their password. To remove someone, deactivate them - that '
+                      'admin? Create your account" on the login screen, verify '
+                      'the email via a link we send them, and set their '
+                      'password. To remove someone, deactivate them - that '
                       'cuts off access immediately without deleting anything.',
                       style: TextStyle(color: AppColors.textGrey),
                     ),
