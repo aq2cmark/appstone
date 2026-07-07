@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as speech;
 
 import '../app_colors.dart';
 import '../services/defense_ai_service.dart';
+import '../services/practice_history_service.dart';
+import 'auth_gate.dart';
 import 'defense_results_screen.dart';
 
 // These small wrapper screens keep routes simple in main.dart.
@@ -18,6 +23,8 @@ class TitleDefenseScreen extends StatelessWidget {
       panelName: 'Dr. Santos',
       panelRole: 'Panel Member',
       maxQuestions: 8,
+      // Conceptual questions: 3 minutes each is enough to type a solid answer.
+      secondsPerQuestion: 180,
       questions: [
         'What is the main problem your capstone project aims to solve?',
         'How is your project different from existing solutions?',
@@ -39,6 +46,8 @@ class OralDefenseScreen extends StatelessWidget {
       panelName: 'Prof. Reyes',
       panelRole: 'Technical Panel',
       maxQuestions: 15,
+      // Technical explanations need more room than title defense.
+      secondsPerQuestion: 240,
       questions: [
         'Can you explain your system architecture?',
         'Why did you choose your database structure?',
@@ -65,6 +74,8 @@ class FinalDefenseScreen extends StatelessWidget {
       panelName: 'Dr. Mendoza',
       panelRole: 'Final Panel',
       maxQuestions: 20,
+      // The deepest questions get the most time.
+      secondsPerQuestion: 300,
       questions: [
         'What did your group complete in the final system?',
         'Can you demonstrate the most important feature?',
@@ -88,6 +99,8 @@ class FinalDefenseScreen extends StatelessWidget {
 
 // One reusable defense practice flow.
 // Students can type answers or press the mic button to dictate an answer.
+// Every question runs on a countdown; when it hits zero the student gets a
+// short grace period to wrap up, then the answer submits itself.
 class DefensePracticeSessionScreen extends StatefulWidget {
   const DefensePracticeSessionScreen({
     super.key,
@@ -96,6 +109,7 @@ class DefensePracticeSessionScreen extends StatefulWidget {
     required this.panelRole,
     required this.questions,
     required this.maxQuestions,
+    required this.secondsPerQuestion,
   });
 
   final String title;
@@ -103,6 +117,9 @@ class DefensePracticeSessionScreen extends StatefulWidget {
   final String panelRole;
   final List<String> questions;
   final int maxQuestions;
+  // Time allowed per main panel question. Harder defense types get more time;
+  // follow-up questions always use the shorter [followUpSeconds] instead.
+  final int secondsPerQuestion;
 
   @override
   State<DefensePracticeSessionScreen> createState() =>
@@ -114,6 +131,22 @@ class _DefensePracticeSessionScreenState
   final answerController = TextEditingController();
   final speechToText = speech.SpeechToText();
   final ai = DefenseAiService();
+  final history = PracticeHistoryService();
+
+  // ---- Question timer -------------------------------------------------------
+  // Each question gets widget.secondsPerQuestion (follow-ups get less). When
+  // the clock reaches zero the student is NOT cut off instantly: a 30-second
+  // "wrap up" grace period starts, and only when that also runs out is the
+  // answer submitted automatically - empty answers are recorded as no answer.
+  // The countdown pauses while the AI is evaluating so thinking time isn't
+  // charged against the student.
+  static const followUpSeconds = 120;
+  static const graceSeconds = 30;
+  Timer? questionTimer;
+  int secondsLeft = 0;
+  bool inGrace = false;
+  // When the session started, for the duration shown in session history.
+  late final DateTime sessionStart;
 
   // The AI asks the fixed questions in order, but can insert a follow-up
   // question when it spots a gap in an answer instead of moving on. Once
@@ -160,10 +193,76 @@ class _DefensePracticeSessionScreenState
   ];
 
   @override
+  void initState() {
+    super.initState();
+    sessionStart = DateTime.now();
+    startQuestionTimer();
+  }
+
+  @override
   void dispose() {
+    questionTimer?.cancel();
     speechToText.stop();
     answerController.dispose();
     super.dispose();
+  }
+
+  // Resets the countdown for whichever question is now on screen.
+  void startQuestionTimer() {
+    questionTimer?.cancel();
+    inGrace = false;
+    secondsLeft = isFollowUp ? followUpSeconds : widget.secondsPerQuestion;
+    questionTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => tickTimer(),
+    );
+  }
+
+  void tickTimer() {
+    if (!mounted || isEvaluating) return;
+    if (secondsLeft > 0) {
+      setState(() => secondsLeft--);
+    }
+    if (secondsLeft > 0) return;
+
+    if (!inGrace) {
+      // Main time is up: give a final 30 seconds to wrap up instead of
+      // cutting the student off mid-sentence.
+      setState(() {
+        inGrace = true;
+        secondsLeft = graceSeconds;
+      });
+      return;
+    }
+
+    // Grace also ran out: hand in whatever is there.
+    questionTimer?.cancel();
+    handleTimeExpired();
+  }
+
+  // Called only when the grace period expires. A typed/spoken partial answer
+  // goes through the normal submit path (so it still gets evaluated); a blank
+  // box is recorded as no answer and the panel moves to the next topic.
+  Future<void> handleTimeExpired() async {
+    if (isEvaluating) return;
+    if (listening) {
+      userStoppedListening = true;
+      await speechToText.stop();
+      if (mounted) setState(() => listening = false);
+    }
+    final answer = answerController.text.trim();
+    if (answer.isEmpty) {
+      setState(() => isEvaluating = true);
+      exchanges.add(
+        QaExchange(
+          question: currentQuestion,
+          answer: '(No answer - time ran out.)',
+        ),
+      );
+      await advancePastCurrentQuestion();
+      return;
+    }
+    await submitAnswer();
   }
 
   @override
@@ -186,13 +285,24 @@ class _DefensePracticeSessionScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Question $totalAsked (of up to ${widget.maxQuestions})'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Question $totalAsked (of up to ${widget.maxQuestions})',
+                        ),
+                      ),
+                      buildTimerChip(),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: progress,
                     color: AppColors.primary,
                   ),
                   const SizedBox(height: 16),
+                  if (inGrace) buildGraceBanner(),
                   Card(
                     color: Colors.white,
                     child: ListTile(
@@ -264,6 +374,69 @@ class _DefensePracticeSessionScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Countdown pill next to the question counter. Primary while there's
+  // plenty of time, gold in the last 30 seconds, red during the grace period.
+  Widget buildTimerChip() {
+    final minutes = secondsLeft ~/ 60;
+    final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
+    final color = inGrace
+        ? Colors.red
+        : secondsLeft <= 30
+        ? AppColors.gold
+        : AppColors.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            inGrace ? Icons.timer_off_outlined : Icons.timer_outlined,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$minutes:$seconds',
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildGraceBanner() {
+    return Card(
+      color: Colors.red.withValues(alpha: 0.08),
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.red),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Time's up! Your answer submits automatically in "
+                '$secondsLeft second${secondsLeft == 1 ? '' : 's'}.',
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -512,6 +685,7 @@ class _DefensePracticeSessionScreenState
           resetAnswerInput();
           isEvaluating = false;
         });
+        startQuestionTimer();
         return;
       }
 
@@ -541,6 +715,7 @@ class _DefensePracticeSessionScreenState
       resetAnswerInput();
       isEvaluating = false;
     });
+    startQuestionTimer();
   }
 
   void resetAnswerInput() {
@@ -551,11 +726,14 @@ class _DefensePracticeSessionScreenState
   }
 
   Future<void> finishSession() async {
+    questionTimer?.cancel();
     try {
       final score = await ai.scoreSession(
         panelTitle: widget.title,
         exchanges: exchanges,
       );
+      if (!mounted) return;
+      await saveSessionHistory(score);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -566,6 +744,7 @@ class _DefensePracticeSessionScreenState
             panelRole: widget.panelRole,
             questions: widget.questions,
             maxQuestions: widget.maxQuestions,
+            secondsPerQuestion: widget.secondsPerQuestion,
             questionsAnswered: exchanges.length,
             score: score,
           ),
@@ -577,6 +756,29 @@ class _DefensePracticeSessionScreenState
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  // Best-effort write to session history. The student identity comes from the
+  // same SharedPreferences keys the login screen saves; if either is missing
+  // (shouldn't happen for a logged-in student) the session simply isn't
+  // recorded. Any failure here must never block the results screen.
+  Future<void> saveSessionHistory(DefenseScore score) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final studentId = prefs.getString(studentIdPrefsKey);
+      final groupId = prefs.getString(groupIdPrefsKey);
+      if (studentId == null || groupId == null) return;
+      await history.saveSession(
+        groupId: groupId,
+        studentId: studentId,
+        sessionType: widget.title,
+        questionsAnswered: exchanges.length,
+        durationSeconds: DateTime.now().difference(sessionStart).inSeconds,
+        overallScore: score.overall,
+      );
+    } catch (_) {
+      // History is a nice-to-have; the results screen still shows.
     }
   }
 }

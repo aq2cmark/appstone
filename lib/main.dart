@@ -3,6 +3,7 @@ import 'package:appstone/firebase_options.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/capstone_manual_screen.dart';
 import 'package:appstone/screens/defense_practice_screen.dart';
+import 'package:appstone/screens/session_history_screen.dart';
 import 'package:appstone/screens/title_defense_screen.dart';
 import 'package:appstone/screens/title_generator_screen.dart';
 import 'package:appstone/screens/ai_workflow_screen.dart';
@@ -59,6 +60,7 @@ class MainApp extends StatelessWidget {
         '/title-defense': (_) => const TitleDefenseScreen(),
         '/oral-defense': (_) => const OralDefenseScreen(),
         '/final-defense': (_) => const FinalDefenseScreen(),
+        '/session-history': (_) => const SessionHistoryScreen(),
         '/ai-workflow': (_) => const AIWorkflowScreen(),
         '/paper-checker': (_) => const PaperCheckerScreen(),
       },

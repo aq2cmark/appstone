@@ -15,6 +15,13 @@ class DefensePracticeScreen extends StatelessWidget {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         title: const Text('Defense Practice'),
+        actions: [
+          IconButton(
+            tooltip: 'Session history',
+            onPressed: () => Navigator.pushNamed(context, '/session-history'),
+            icon: const Icon(Icons.history),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -34,7 +41,7 @@ class DefensePracticeScreen extends StatelessWidget {
                     title: 'Title Defense',
                     subtitle:
                         'Practice defending your proposal and research plan.',
-                    details: '15-20 min | 5-8 questions',
+                    details: '15-20 min | 5-8 questions | 3 min each',
                     icon: Icons.chat_bubble_outline,
                     color: AppColors.primary,
                     onTap: () => Navigator.pushNamed(context, '/title-defense'),
@@ -42,7 +49,7 @@ class DefensePracticeScreen extends StatelessWidget {
                   PracticeModeCard(
                     title: 'Oral Defense',
                     subtitle: 'Practice presenting your system design.',
-                    details: '30-45 min | 10-15 questions',
+                    details: '30-45 min | 10-15 questions | 4 min each',
                     icon: Icons.mic_none,
                     color: AppColors.grey,
                     onTap: () => Navigator.pushNamed(context, '/oral-defense'),
@@ -50,10 +57,17 @@ class DefensePracticeScreen extends StatelessWidget {
                   PracticeModeCard(
                     title: 'Final Defense',
                     subtitle: 'Practice your full final presentation.',
-                    details: '45-60 min | 15-20 questions',
+                    details: '45-60 min | 15-20 questions | 5 min each',
                     icon: Icons.emoji_events_outlined,
                     color: AppColors.gold,
                     onTap: () => Navigator.pushNamed(context, '/final-defense'),
+                  ),
+                  const SizedBox(height: 4),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/session-history'),
+                    icon: const Icon(Icons.history),
+                    label: const Text('View Session History'),
                   ),
                 ],
               ),

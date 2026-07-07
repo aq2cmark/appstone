@@ -15,6 +15,7 @@ class DefenseResultsScreen extends StatelessWidget {
     required this.panelRole,
     required this.questions,
     required this.maxQuestions,
+    required this.secondsPerQuestion,
     required this.questionsAnswered,
     required this.score,
   });
@@ -24,6 +25,8 @@ class DefenseResultsScreen extends StatelessWidget {
   final String panelRole;
   final List<String> questions;
   final int maxQuestions;
+  // Carried through so "Practice Again" starts with the same question timer.
+  final int secondsPerQuestion;
   final int questionsAnswered;
   final DefenseScore score;
 
@@ -257,6 +260,7 @@ class DefenseResultsScreen extends StatelessWidget {
           panelRole: panelRole,
           questions: questions,
           maxQuestions: maxQuestions,
+          secondsPerQuestion: secondsPerQuestion,
         ),
       ),
     );

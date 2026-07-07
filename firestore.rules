@@ -75,6 +75,16 @@ service cloud.firestore {
       allow read, write: if isActiveAdmin();
     }
 
+    // --- Defense practice history -------------------------------------------
+    // Students are not Firebase Auth accounts (see note on `groups` above), so
+    // creating and reading practice session records has to stay open, same as
+    // group reads/updates. Records are append-only from the app; only admins
+    // can clean them up.
+    match /practice_sessions/{sessionId} {
+      allow read, create: if true;
+      allow update, delete: if isActiveAdmin();
+    }
+
     // Anything not matched above is denied by default.
   }
 }
