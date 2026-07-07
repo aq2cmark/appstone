@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import 'owner_transfer_confirm_page.dart';
 
 // Owner-only page to manage who has admin access. Owners can invite new admins
 // (by email), turn access on/off, change roles, and remove records. Deactivating
@@ -125,12 +127,14 @@ class AdminManagementPage extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  // Only one owner can exist, and it is always the caller
+                  // viewing this owner-only page - so any other row here is
+                  // never already an owner, and this only ever offers to
+                  // transfer ownership away, never to demote one.
                   OutlinedButton.icon(
-                    onPressed: () => _toggleRole(context, admin),
-                    icon: const Icon(Icons.swap_horiz, size: 18),
-                    label: Text(
-                      admin.isOwner ? 'Make Admin' : 'Make Owner',
-                    ),
+                    onPressed: () => _transferOwnership(context, admin),
+                    icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+                    label: const Text('Make Owner'),
                   ),
                   if (admin.active)
                     OutlinedButton.icon(
@@ -189,65 +193,44 @@ class AdminManagementPage extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     final nameController = TextEditingController();
     final emailController = TextEditingController();
-    var role = AdminRole.admin;
 
+    // Invites are always plain admins - only the ownership-transfer flow
+    // below can ever produce an owner, so there is no role picker here.
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Invite Admin'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  border: OutlineInputBorder(),
-                ),
+      builder: (context) => AlertDialog(
+        title: const Text('Invite Admin'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<AdminRole>(
-                value: role,
-                decoration: const InputDecoration(
-                  labelText: 'Role',
-                  border: OutlineInputBorder(),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: AdminRole.admin,
-                    child: Text('Admin (manage students)'),
-                  ),
-                  DropdownMenuItem(
-                    value: AdminRole.owner,
-                    child: Text('Owner (also manage admins)'),
-                  ),
-                ],
-                onChanged: (value) =>
-                    setState(() => role = value ?? AdminRole.admin),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Send Invite'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Send Invite'),
+          ),
+        ],
       ),
     );
 
@@ -258,7 +241,7 @@ class AdminManagementPage extends StatelessWidget {
     if (confirmed != true) return;
 
     try {
-      await repo.inviteAdmin(email: email, name: name, role: role);
+      await repo.inviteAdmin(email: email, name: name, role: AdminRole.admin);
       messenger.showSnackBar(
         SnackBar(content: Text('Invited $email. They can now create their account.')),
       );
@@ -267,15 +250,39 @@ class AdminManagementPage extends StatelessWidget {
     }
   }
 
-  Future<void> _toggleRole(BuildContext context, AdminAccount admin) async {
+  // Ownership can only move via this confirmed, email-verified handoff:
+  // an "are you sure" dialog here, then a Firebase sign-in link emailed to
+  // the CURRENT owner's own inbox that must be opened and confirmed before
+  // the role swap actually happens (see OwnerTransferConfirmPage). That way
+  // neither a stolen nor a merely-left-open owner session is enough on its
+  // own to hand off ownership.
+  Future<void> _transferOwnership(BuildContext context, AdminAccount admin) async {
     final messenger = ScaffoldMessenger.of(context);
-    final newRole = admin.isOwner ? AdminRole.admin : AdminRole.owner;
+    final confirm = await _confirm(
+      context,
+      title: 'Transfer ownership to ${admin.name}?',
+      body: 'Only one owner can exist at a time. You will move to the Admin '
+          'role and ${admin.email} will become the new owner. We will email '
+          'you (the current owner) a confirmation link first - the transfer '
+          'only happens once you open it and confirm.',
+      action: 'Send Confirmation Email',
+    );
+    if (!confirm) return;
+
     try {
-      await repo.setAdminRole(email: admin.email, role: newRole);
+      await repo.requestOwnershipTransfer(
+        ownerEmail: currentEmail,
+        toEmail: admin.email,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        ownerTransferEmailPrefsKey,
+        currentEmail.toLowerCase(),
+      );
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '${admin.name} is now ${newRole == AdminRole.owner ? 'an owner' : 'an admin'}.',
+            'Check $currentEmail for a confirmation link to finish the transfer.',
           ),
         ),
       );

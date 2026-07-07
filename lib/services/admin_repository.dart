@@ -159,17 +159,6 @@ class AdminRepository {
     });
   }
 
-  // Owner action: change an admin's role (owner can manage other admins).
-  Future<void> setAdminRole({
-    required String email,
-    required AdminRole role,
-  }) {
-    return _firestore.collection('admins').doc(email.toLowerCase()).update({
-      'role': role.name,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
-
   // Owner action: remove the admin record entirely (e.g. a pending invite).
   // This does NOT delete their Firebase Auth login - that is a Firebase console
   // action - but with no active `admins` doc they can no longer get in.
@@ -258,6 +247,123 @@ class AdminRepository {
       await _auth.signOut();
       rethrow;
     }
+  }
+
+  // ---- Owner transfer (exactly one owner may exist at a time) ---------------
+  //
+  // Promoting someone to owner is sensitive and hard to reverse, so it is
+  // never done directly by toggling a role field. The current owner requests
+  // a transfer, which emails a Firebase sign-in link to THEIR OWN address (not
+  // the new owner's) as a live "prove you still control this inbox right now"
+  // check - a session left open or taken over is not enough on its own to
+  // hand off ownership. Only after that link is confirmed does the role swap
+  // happen, atomically, so the app is never left with zero or two owners.
+  // Invites can also never create an owner directly (see AdminManagementPage);
+  // this is the only path that produces one.
+
+  // Step 1: record which admin the pending transfer is to and email the
+  // OWNER a confirmation link. The target is embedded in the link itself (as
+  // a query param) so a later, unrelated transfer request can't get confused
+  // with this one if both are outstanding at once.
+  Future<void> requestOwnershipTransfer({
+    required String ownerEmail,
+    required String toEmail,
+  }) async {
+    final ownerLower = ownerEmail.trim().toLowerCase();
+    final toLower = toEmail.trim().toLowerCase();
+
+    final targetSnapshot = await _firestore
+        .collection('admins')
+        .doc(toLower)
+        .get();
+    if (!targetSnapshot.exists) {
+      throw StateError('That admin record no longer exists.');
+    }
+    if (!AdminAccount.fromSnapshot(targetSnapshot).active) {
+      throw StateError('Reactivate this admin before making them owner.');
+    }
+
+    await _firestore.collection('admins').doc(ownerLower).update({
+      'pendingOwnerTransferTo': toLower,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await _auth.sendSignInLinkToEmail(
+      email: ownerLower,
+      actionCodeSettings: ActionCodeSettings(
+        url: '${Uri.base.origin}?intent=ownerTransfer&to=$toLower',
+        handleCodeInApp: true,
+      ),
+    );
+  }
+
+  bool isOwnerTransferLink(String link) {
+    return _auth.isSignInWithEmailLink(link) &&
+        Uri.parse(link).queryParameters['intent'] == 'ownerTransfer';
+  }
+
+  // Step 2a: sign in with the link (the actual proof of live inbox control),
+  // then look up who this specific transfer would hand ownership to, so the
+  // page can show a final "make X the owner?" confirmation before anything
+  // is written. Signs back out and refuses if the link doesn't match a still-
+  // pending transfer (e.g. it was already used, or a newer request replaced
+  // it).
+  Future<AdminAccount> verifyOwnershipTransferLink({
+    required String ownerEmail,
+    required String emailLink,
+  }) async {
+    final ownerLower = ownerEmail.trim().toLowerCase();
+    await _auth.signInWithEmailLink(email: ownerLower, emailLink: emailLink);
+
+    final toLower = Uri.parse(emailLink).queryParameters['to'];
+    final ownerSnapshot = await _firestore
+        .collection('admins')
+        .doc(ownerLower)
+        .get();
+    final pendingTo = ownerSnapshot.data()?['pendingOwnerTransferTo'] as String?;
+
+    if (toLower == null || pendingTo == null || pendingTo != toLower) {
+      await _auth.signOut();
+      throw StateError(
+        'This transfer request is no longer valid. Start a new one from the '
+        'Admins page.',
+      );
+    }
+
+    final targetSnapshot = await _firestore
+        .collection('admins')
+        .doc(toLower)
+        .get();
+    if (!targetSnapshot.exists) {
+      await _auth.signOut();
+      throw StateError('That admin record no longer exists.');
+    }
+    return AdminAccount.fromSnapshot(targetSnapshot);
+  }
+
+  // Step 2b: called when the owner presses the final in-app confirm button.
+  // Swaps both roles in one atomic batch so there is never a moment with zero
+  // or two owners.
+  Future<void> applyOwnershipTransfer({
+    required String ownerEmail,
+    required String toEmail,
+  }) async {
+    final ownerLower = ownerEmail.trim().toLowerCase();
+    final toLower = toEmail.trim().toLowerCase();
+    final ownerRef = _firestore.collection('admins').doc(ownerLower);
+    final targetRef = _firestore.collection('admins').doc(toLower);
+
+    final batch = _firestore.batch();
+    batch.update(ownerRef, {
+      'role': AdminRole.admin.name,
+      'pendingOwnerTransferTo': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    batch.update(targetRef, {
+      'role': AdminRole.owner.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
   }
 
   // Sends Firebase's built-in password reset email for admin accounts.
@@ -481,6 +587,89 @@ class AdminRepository {
     return _firestore.collection('groups').doc(groupId).delete();
   }
 
+  // Fixes a typo in a group's name.
+  Future<void> renameGroup({
+    required String groupId,
+    required String newName,
+  }) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) {
+      throw StateError('Group name cannot be empty.');
+    }
+    await _firestore.collection('groups').doc(groupId).update({
+      'name': trimmed,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Admin action: fix a typo in a student's name, or move them to a
+  // different group entirely. Moving groups means removing them from the old
+  // group's embedded student list and adding them to the new one, across two
+  // documents, so it runs as one transaction - a failure partway through
+  // can't leave the student in neither (or both) group.
+  Future<void> editStudent({
+    required CapstoneGroup fromGroup,
+    required StudentAccount student,
+    required String newName,
+    required String newGroupId,
+  }) async {
+    final trimmedName = newName.trim();
+    if (trimmedName.isEmpty) {
+      throw StateError('Name cannot be empty.');
+    }
+
+    if (newGroupId == fromGroup.id) {
+      await _updateStudentInGroup(
+        groupId: fromGroup.id,
+        studentId: student.id,
+        transform: (current) => current.copyWith(name: trimmedName),
+      );
+      return;
+    }
+
+    final fromRef = _firestore.collection('groups').doc(fromGroup.id);
+    final toRef = _firestore.collection('groups').doc(newGroupId);
+
+    await _firestore.runTransaction((transaction) async {
+      final fromSnapshot = await transaction.get(fromRef);
+      final toSnapshot = await transaction.get(toRef);
+      if (!fromSnapshot.exists) {
+        throw StateError('The student\'s current group no longer exists.');
+      }
+      if (!toSnapshot.exists) {
+        throw StateError('The target group no longer exists.');
+      }
+
+      final fromGroupNow = CapstoneGroup.fromSnapshot(fromSnapshot);
+      final toGroupNow = CapstoneGroup.fromSnapshot(toSnapshot);
+      if (!fromGroupNow.students.any((s) => s.id == student.id)) {
+        throw StateError('Student account not found.');
+      }
+      if (toGroupNow.students.length >= 5) {
+        throw StateError('${toGroupNow.name} already has 5 members.');
+      }
+
+      final movedStudent = student.copyWith(name: trimmedName);
+      final remainingFrom = fromGroupNow.students
+          .where((s) => s.id != student.id)
+          .map((s) => s.toMap())
+          .toList();
+      final updatedTo = [
+        ...toGroupNow.students.map((s) => s.toMap()),
+        movedStudent.toMap(),
+      ];
+
+      transaction.update(fromRef, {
+        'students': remainingFrom,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.update(toRef, {
+        'students': updatedTo,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
   // Student login checks the generated credentials stored inside groups.
   // This is simple for the prototype; secure production auth should use Auth.
   Future<StudentLoginResult?> signInStudent({
@@ -646,6 +835,7 @@ class StudentAccount {
   final bool resetRequested;
 
   StudentAccount copyWith({
+    String? name,
     String? password,
     String? tempPassword,
     bool? mustChangePassword,
@@ -653,7 +843,7 @@ class StudentAccount {
   }) {
     return StudentAccount(
       id: id,
-      name: name,
+      name: name ?? this.name,
       email: email,
       studentId: studentId,
       password: password ?? this.password,

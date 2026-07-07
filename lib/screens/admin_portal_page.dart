@@ -291,7 +291,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   child: Text('No groups yet. Click Create New Group first.'),
                 ),
               ),
-            for (final group in groups) buildGroupCard(group),
+            for (final group in groups) buildGroupCard(group, groups),
           ],
         );
       },
@@ -361,7 +361,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
   }
 
-  Widget buildGroupCard(CapstoneGroup group) {
+  Widget buildGroupCard(CapstoneGroup group, List<CapstoneGroup> groups) {
     // One card per capstone group.
     // The DataTable is horizontally scrollable so it still works on mobile.
     return Card(
@@ -387,6 +387,14 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      IconButton(
+                        tooltip: 'Rename group',
+                        onPressed: () => renameGroup(group),
+                        icon: const Icon(Icons.edit, color: Colors.white, size: 18),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
                       Chip(
                         label: Text(group.isPremium ? 'Premium' : 'Free Plan'),
@@ -519,6 +527,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
+                                      tooltip: 'Edit student',
+                                      onPressed: () =>
+                                          editStudent(group, student, groups),
+                                      icon: const Icon(
+                                        Icons.edit,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    IconButton(
                                       tooltip: 'Reset password',
                                       onPressed: () =>
                                           resetStudentPassword(group, student),
@@ -642,6 +659,108 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
 
     if (confirm != true) return;
     await runAction(() => _repo.grantPremium(group), 'Premium granted.');
+  }
+
+  Future<void> renameGroup(CapstoneGroup group) async {
+    final controller = TextEditingController(text: group.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Group'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || name == group.name) return;
+
+    await runAction(
+      () => _repo.renameGroup(groupId: group.id, newName: name),
+      'Group renamed.',
+    );
+  }
+
+  // Lets an admin fix a typo in a student's name, or move them into a
+  // different group entirely (e.g. they were registered into the wrong one).
+  Future<void> editStudent(
+    CapstoneGroup group,
+    StudentAccount student,
+    List<CapstoneGroup> groups,
+  ) async {
+    final nameController = TextEditingController(text: student.name);
+    var targetGroupId = group.id;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Student'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: targetGroupId,
+                decoration: const InputDecoration(
+                  labelText: 'Group',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  for (final g in groups)
+                    DropdownMenuItem(value: g.id, child: Text(g.name)),
+                ],
+                onChanged: (value) =>
+                    setState(() => targetGroupId = value ?? targetGroupId),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final newName = nameController.text;
+    nameController.dispose();
+    if (confirmed != true) return;
+
+    await runAction(
+      () => _repo.editStudent(
+        fromGroup: group,
+        student: student,
+        newName: newName,
+        newGroupId: targetGroupId,
+      ),
+      'Student updated.',
+    );
   }
 
   Future<void> deleteGroup(CapstoneGroup group) async {

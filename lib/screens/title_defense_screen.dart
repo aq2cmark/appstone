@@ -573,15 +573,16 @@ class _DefensePracticeSessionScreenState
       listenOptions: speech.SpeechListenOptions(
         // On web, this plugin ties the BROWSER's own "continuous" mode
         // directly to partialResults (see speech_to_text_web.dart) - there is
-        // no separate on/off switch for it. Mobile Chrome's continuous mode
-        // has a long-standing bug where it re-emits an already-finished
-        // phrase as a new result after a pause, which is what was doubling
-        // text on a phone's browser/home-screen shortcut. Turning
-        // partialResults off on web forces the browser to stop cleanly after
-        // one phrase instead of running its own buggy continuous session;
-        // listenMode.confirmation does the equivalent job on native Android.
-        // The restart logic above then stitches each phrase back together.
-        partialResults: !kIsWeb,
+        // no separate on/off switch for it. Turning partialResults off forced
+        // the browser into its non-continuous, one-phrase-at-a-time mode,
+        // which stopped a duplicate-text bug on some phone browsers - but that
+        // one-shot mode is also what made Chrome auto-capitalize and punctuate
+        // every phrase and recognize Filipino words noticeably worse than its
+        // normal continuous session does. That trade was worse than the bug it
+        // fixed, so web keeps partialResults on like native does;
+        // listenMode.confirmation plus the restart logic above still recovers
+        // gracefully if the browser's continuous session ends on its own.
+        partialResults: true,
         onDevice: !kIsWeb,
         listenMode: speech.ListenMode.confirmation,
         listenFor: const Duration(seconds: 60),

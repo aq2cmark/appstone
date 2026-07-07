@@ -7,6 +7,7 @@ import 'admin_claim_page.dart';
 import 'admin_portal_page.dart';
 import 'dashboard_screen.dart';
 import 'login_page.dart';
+import 'owner_transfer_confirm_page.dart';
 
 const studentIdPrefsKey = 'studentId';
 const groupIdPrefsKey = 'groupId';
@@ -33,10 +34,15 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _resolve() async {
-    // An admin arriving via the "verify your email" link sent from
-    // AdminSignupPage takes priority over any restored session: this is a
-    // fresh claim attempt, not a normal app open.
+    // An admin arriving via a link emailed from AdminSignupPage or an
+    // ownership-transfer request takes priority over any restored session:
+    // this is a fresh confirmation, not a normal app open. The transfer check
+    // must come first since it is the more specific of the two link kinds.
     final currentLink = Uri.base.toString();
+    if (_repo.isOwnerTransferLink(currentLink)) {
+      _finish(OwnerTransferConfirmPage(emailLink: currentLink));
+      return;
+    }
     if (_repo.isAdminClaimLink(currentLink)) {
       _finish(AdminClaimPage(emailLink: currentLink));
       return;
