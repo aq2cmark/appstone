@@ -614,6 +614,33 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> grantPremium(CapstoneGroup group) async {
+    // Premium has no revoke path, so granting it deserves a confirmation.
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Grant Premium'),
+        content: Text(
+          'Grant Premium to "${group.name}"? This unlocks the premium '
+          'features for all its members and cannot be reverted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.gold,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Grant Premium'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
     await runAction(() => _repo.grantPremium(group), 'Premium granted.');
   }
 
@@ -647,6 +674,30 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     CapstoneGroup group,
     StudentAccount student,
   ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Student'),
+        content: Text(
+          'Delete ${student.name} (${student.studentId}) from '
+          '"${group.name}"? They will no longer be able to log in. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
     await runAction(
       () => _repo.deleteStudent(group: group, student: student),
       'Student deleted.',
