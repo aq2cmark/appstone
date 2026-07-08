@@ -7,6 +7,7 @@ import '../services/admin_repository.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/section_header.dart';
 import 'admin_management_page.dart';
+import 'audit_log_page.dart';
 import 'import_students_page.dart';
 import 'login_page.dart';
 
@@ -68,6 +69,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                               currentEmail:
                                   FirebaseAuth.instance.currentUser?.email ?? '',
                             )
+                          : selectedPage == 4 &&
+                                widget.role == AdminRole.owner
+                          ? AuditLogPage(repo: _repo)
                           : buildDashboard(groups),
                     ),
                   ],
@@ -131,6 +135,8 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             navButton(2, Icons.upload_file, 'Import Students'),
             if (widget.role == AdminRole.owner)
               navButton(3, Icons.admin_panel_settings, 'Admins'),
+            if (widget.role == AdminRole.owner)
+              navButton(4, Icons.history, 'Audit Log'),
             const Spacer(),
             navButton(-1, Icons.logout, 'Logout'),
             const SizedBox(height: 16),
@@ -177,7 +183,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Register New Student'
         : selectedPage == 2
         ? 'Import Students'
-        : 'Manage Admins';
+        : selectedPage == 3
+        ? 'Manage Admins'
+        : 'Audit Log';
 
     final subtitle = selectedPage == 0
         ? 'Manage student groups and monitor premium feature subscriptions'
@@ -185,7 +193,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Add a student to a capstone group and generate credentials'
         : selectedPage == 2
         ? 'Add many students at once from an Excel or CSV roster'
-        : 'Invite admins and control who has access';
+        : selectedPage == 3
+        ? 'Invite admins and control who has access'
+        : 'Review a history of admin actions';
 
     return SectionHeader(
       title: title,

@@ -123,6 +123,39 @@ class AdminRepository {
         .map((s) => s.docs.map(AdminAccount.fromSnapshot).toList());
   }
 
+  // Live, newest-first feed of admin actions for the owner-only audit log
+  // page. Capped so a long-lived portal never streams an unbounded history.
+  Stream<List<AuditLogEntry>> auditLogStream({int limit = 200}) {
+    return _firestore
+        .collection('audit_logs')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((s) => s.docs.map(AuditLogEntry.fromSnapshot).toList());
+  }
+
+  // Appends one entry to the append-only `audit_logs` collection describing an
+  // admin action, tagged with the signed-in admin who performed it. Audit
+  // logging is best-effort: a failure here must never surface to the user or
+  // undo the action that already succeeded, so every error is swallowed.
+  Future<void> _recordAudit({
+    required String action,
+    required String description,
+  }) async {
+    try {
+      final actor = _auth.currentUser;
+      await _firestore.collection('audit_logs').add({
+        'action': action,
+        'description': description,
+        'actorEmail': actor?.email?.toLowerCase() ?? 'unknown',
+        'actorUid': actor?.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Intentionally ignored - see the doc comment above.
+    }
+  }
+
   // Owner action: invite a new admin by email. They then create their own
   // login through the "invited admin" sign-up screen; this only records that
   // the email is allowed and with what role.
@@ -149,21 +182,38 @@ class AdminRepository {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: 'admin.invite',
+      description: 'Invited ${role.name} $lower',
+    );
   }
 
   // Owner action: turn an admin's access on or off without deleting anything.
-  Future<void> setAdminActive({required String email, required bool active}) {
-    return _firestore.collection('admins').doc(email.toLowerCase()).update({
+  Future<void> setAdminActive({
+    required String email,
+    required bool active,
+  }) async {
+    final lower = email.toLowerCase();
+    await _firestore.collection('admins').doc(lower).update({
       'active': active,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: active ? 'admin.reactivate' : 'admin.deactivate',
+      description: '${active ? 'Reactivated' : 'Deactivated'} admin $lower',
+    );
   }
 
   // Owner action: remove the admin record entirely (e.g. a pending invite).
   // This does NOT delete their Firebase Auth login - that is a Firebase console
   // action - but with no active `admins` doc they can no longer get in.
-  Future<void> deleteAdmin(String email) {
-    return _firestore.collection('admins').doc(email.toLowerCase()).delete();
+  Future<void> deleteAdmin(String email) async {
+    final lower = email.toLowerCase();
+    await _firestore.collection('admins').doc(lower).delete();
+    await _recordAudit(
+      action: 'admin.delete',
+      description: 'Removed admin record $lower',
+    );
   }
 
   // ---- Admin invite claim via email link -------------------------------------
@@ -364,6 +414,10 @@ class AdminRepository {
       'updatedAt': FieldValue.serverTimestamp(),
     });
     await batch.commit();
+    await _recordAudit(
+      action: 'admin.transferOwnership',
+      description: 'Transferred ownership to $toLower',
+    );
   }
 
   // Sends Firebase's built-in password reset email for admin accounts.
@@ -388,6 +442,10 @@ class AdminRepository {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: 'group.create',
+      description: 'Created group "$name"',
+    );
     return ref.id;
   }
 
@@ -397,13 +455,15 @@ class AdminRepository {
     final groupRef = _firestore.collection('groups').doc(draft.groupId);
     final counterRef = _firestore.collection('metadata').doc('studentCounter');
 
-    return _firestore.runTransaction((transaction) async {
+    var groupName = '';
+    final student = await _firestore.runTransaction((transaction) async {
       final groupSnapshot = await transaction.get(groupRef);
       if (!groupSnapshot.exists) {
         throw StateError('The selected group no longer exists.');
       }
 
       final group = CapstoneGroup.fromSnapshot(groupSnapshot);
+      groupName = group.name;
       if (group.students.length >= 5) {
         throw StateError('This group already has 5 members.');
       }
@@ -433,16 +493,28 @@ class AdminRepository {
 
       return student;
     });
+
+    await _recordAudit(
+      action: 'student.register',
+      description:
+          'Registered ${student.name} (${student.studentId}) in $groupName',
+    );
+    return student;
   }
 
   Future<void> deleteStudent({
     required CapstoneGroup group,
     required StudentAccount student,
-  }) {
-    return _firestore.collection('groups').doc(group.id).update({
+  }) async {
+    await _firestore.collection('groups').doc(group.id).update({
       'students': FieldValue.arrayRemove([student.toMap()]),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: 'student.delete',
+      description:
+          'Deleted ${student.name} (${student.studentId}) from ${group.name}',
+    );
   }
 
   // Admin reset: generate a new temporary password for one student. This makes
@@ -464,6 +536,10 @@ class AdminRepository {
         mustChangePassword: true,
         resetRequested: false,
       ),
+    );
+    await _recordAudit(
+      action: 'student.resetPassword',
+      description: 'Reset password for ${student.name} (${student.studentId})',
     );
     return newPassword;
   }
@@ -576,15 +652,25 @@ class AdminRepository {
   }
 
   // Premium is one-directional: once granted it stays on, so there is no revoke path.
-  Future<void> grantPremium(CapstoneGroup group) {
-    return _firestore.collection('groups').doc(group.id).update({
+  Future<void> grantPremium(CapstoneGroup group) async {
+    await _firestore.collection('groups').doc(group.id).update({
       'isPremium': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: 'group.grantPremium',
+      description: 'Granted premium to ${group.name}',
+    );
   }
 
-  Future<void> deleteGroup(String groupId) {
-    return _firestore.collection('groups').doc(groupId).delete();
+  Future<void> deleteGroup(String groupId) async {
+    final snapshot = await _firestore.collection('groups').doc(groupId).get();
+    final name = snapshot.data()?['name'] as String? ?? groupId;
+    await _firestore.collection('groups').doc(groupId).delete();
+    await _recordAudit(
+      action: 'group.delete',
+      description: 'Deleted group "$name"',
+    );
   }
 
   // Fixes a typo in a group's name.
@@ -600,6 +686,10 @@ class AdminRepository {
       'name': trimmed,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _recordAudit(
+      action: 'group.rename',
+      description: 'Renamed a group to "$trimmed"',
+    );
   }
 
   // Admin action: fix a typo in a student's name, or move them to a
@@ -624,9 +714,15 @@ class AdminRepository {
         studentId: student.id,
         transform: (current) => current.copyWith(name: trimmedName),
       );
+      await _recordAudit(
+        action: 'student.edit',
+        description:
+            'Renamed ${student.name} to "$trimmedName" in ${fromGroup.name}',
+      );
       return;
     }
 
+    var toGroupName = '';
     final fromRef = _firestore.collection('groups').doc(fromGroup.id);
     final toRef = _firestore.collection('groups').doc(newGroupId);
 
@@ -642,6 +738,7 @@ class AdminRepository {
 
       final fromGroupNow = CapstoneGroup.fromSnapshot(fromSnapshot);
       final toGroupNow = CapstoneGroup.fromSnapshot(toSnapshot);
+      toGroupName = toGroupNow.name;
       if (!fromGroupNow.students.any((s) => s.id == student.id)) {
         throw StateError('Student account not found.');
       }
@@ -668,6 +765,13 @@ class AdminRepository {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
+
+    await _recordAudit(
+      action: 'student.edit',
+      description:
+          'Moved ${student.name} from ${fromGroup.name} to $toGroupName'
+          '${trimmedName == student.name ? '' : ' (renamed to "$trimmedName")'}',
+    );
   }
 
   // Student login checks the generated credentials stored inside groups.
@@ -751,6 +855,43 @@ class AdminAccount {
         active: active,
         uid: uid ?? this.uid,
       );
+}
+
+// One recorded admin action from the append-only `audit_logs` collection.
+// `action` is a stable machine key like 'group.delete' (its prefix drives the
+// icon shown in the UI); `description` is the human-readable line.
+class AuditLogEntry {
+  const AuditLogEntry({
+    required this.id,
+    required this.action,
+    required this.description,
+    required this.actorEmail,
+    required this.createdAt,
+  });
+
+  factory AuditLogEntry.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    final data = snapshot.data() ?? {};
+    return AuditLogEntry(
+      id: snapshot.id,
+      action: data['action'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      actorEmail: data['actorEmail'] as String? ?? 'unknown',
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+    );
+  }
+
+  final String id;
+  final String action;
+  final String description;
+  final String actorEmail;
+  // Null only for the brief moment before the server timestamp resolves.
+  final DateTime? createdAt;
+
+  // Broad category from the action prefix ('group', 'student', 'admin'), used
+  // to pick the row icon and colour on the audit log page.
+  String get category => action.split('.').first;
 }
 
 // Data model for one capstone group from Firestore.
