@@ -1,1 +1,38 @@
-{"firestore":{"rules":"firestore.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"appstone-db","appId":"1:276525832875:android:f4f5ffc66a5c01184975ee","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"appstone-db","configurations":{"android":"1:276525832875:android:f4f5ffc66a5c01184975ee","ios":"1:276525832875:ios:f579852692a610bc4975ee","web":"1:276525832875:web:6a30b2e06399e7a34975ee"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*.log"
+      ]
+    }
+  ],
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "appstone-db",
+          "appId": "1:276525832875:android:f4f5ffc66a5c01184975ee",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "appstone-db",
+          "configurations": {
+            "android": "1:276525832875:android:f4f5ffc66a5c01184975ee",
+            "ios": "1:276525832875:ios:f579852692a610bc4975ee",
+            "web": "1:276525832875:web:6a30b2e06399e7a34975ee"
+          }
+        }
+      }
+    }
+  }
+}
