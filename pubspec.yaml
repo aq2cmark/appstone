@@ -21,6 +21,7 @@ dependencies:
   xml: ^6.6.1
   intl: ^0.20.2
   csv: ^6.0.0
+  cloud_functions: ^6.3.3
 
 dev_dependencies:
   flutter_test:

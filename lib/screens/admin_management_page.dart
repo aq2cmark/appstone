@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import '../services/functions_service.dart';
 import 'owner_transfer_confirm_page.dart';
 
 // Owner-only page to manage who has admin access. Owners can invite new admins
@@ -241,9 +242,13 @@ class AdminManagementPage extends StatelessWidget {
     if (confirmed != true) return;
 
     try {
-      await repo.inviteAdmin(email: email, name: name, role: AdminRole.admin);
+      await FunctionsService().inviteAdmin(email: email, name: name);
       messenger.showSnackBar(
-        SnackBar(content: Text('Invited $email. They can now create their account.')),
+        SnackBar(
+          content: Text(
+            'Invited $email. They will get an email with a link to set their password.',
+          ),
+        ),
       );
     } catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.toString())));
