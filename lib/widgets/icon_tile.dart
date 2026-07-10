@@ -43,8 +43,10 @@ class AppFeatureCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.width,
+    this.height = 200,
     this.onTap,
     this.locked = false,
+    this.elevated = false,
   });
 
   final String title;
@@ -52,50 +54,56 @@ class AppFeatureCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final double width;
+  final double height;
   final VoidCallback? onTap;
   final bool locked;
+  // True while the card is hovered in the desktop "dock" grid, so it lifts off
+  // the page with a stronger, feature-coloured shadow to read as popped-out.
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: width,
-      height: 200,
+      height: height,
       child: Card(
         clipBehavior: Clip.antiAlias,
+        elevation: elevated ? 14 : 1,
+        shadowColor: elevated ? color : null,
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    IconBadge(icon: icon, color: color, size: 64),
+                    IconBadge(icon: icon, color: color, size: 72),
                     const Spacer(),
                     if (locked)
                       const Icon(
                         Icons.lock_outline,
-                        size: 22,
+                        size: 24,
                         color: AppColors.gold,
                       ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 21,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 7),
                 Text(
                   subtitle,
                   style: const TextStyle(
                     color: AppColors.textGrey,
-                    fontSize: 13,
+                    fontSize: 15,
                   ),
                 ),
               ],

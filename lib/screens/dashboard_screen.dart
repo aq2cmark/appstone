@@ -12,7 +12,13 @@ import 'login_page.dart';
 // stays centered. Wide enough to use the screen (cards spread across the row
 // instead of a narrow column) but capped so it never looks stretched on an
 // ultra-wide monitor. The header and body share it so they line up.
-const dashboardContentWidth = 1200.0;
+const dashboardContentWidth = 1360.0;
+
+// Resting height of a feature card, and how much the hovered card grows in the
+// desktop dock layout. Shared by the grid and the card so the row reserves
+// enough vertical room for the magnified card.
+const _dockBaseHeight = 272.0;
+const _hoverPeakScale = 1.16;
 
 // Student dashboard after login.
 // It receives the student and group names from LoginPage after credentials pass.
@@ -43,6 +49,12 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _repo = AdminRepository();
   bool _promptedForTempChange = false;
+  // Index of the feature card the mouse is currently over, driving the desktop
+  // "dock" magnification. Null when nothing is hovered (and always null on
+  // touch devices, which never fire hover events). Kept as a ValueNotifier so a
+  // hover only rebuilds the cards that listen to it - not the whole dashboard -
+  // which is what keeps the magnify animation smooth.
+  final ValueNotifier<int?> _hoveredFeature = ValueNotifier<int?>(null);
 
   @override
   void initState() {
@@ -53,6 +65,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _forceTempPasswordChange();
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _hoveredFeature.dispose();
+    super.dispose();
   }
 
   @override
@@ -134,23 +152,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Same card design at every screen size. We aim for a comfortable card width
-  // and fit as many columns as the space allows, then size each card to fill
-  // its share of the row exactly - so on a wide desktop the cards spread across
-  // and fill the screen, and on a phone they reflow down to one column.
+  // We aim for a comfortable card width and fit as many columns as the space
+  // allows, then size each card to fill its share of the row exactly. When
+  // every feature fits on a single row (a wide desktop), we upgrade to an
+  // interactive "dock" layout that magnifies the hovered card and shrinks its
+  // neighbours by distance. On narrower/touch layouts the cards simply reflow.
   Widget buildFeatureGrid(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const gap = 16.0;
-        const targetCardWidth = 210.0;
+        const gap = 20.0;
+        const targetCardWidth = 220.0;
         final maxWidth = constraints.maxWidth;
-        // How many ~210px cards fit across (never more than the feature count).
+        // How many ~220px cards fit across (never more than the feature count).
         var columns = ((maxWidth + gap) / (targetCardWidth + gap)).floor();
         columns = columns.clamp(1, _features.length);
         // Divide the row evenly so cards fill the full width with no empty gap
         // on the right. floor keeps rounding from bumping a card to a new row.
         final cardWidth =
             ((maxWidth - gap * (columns - 1)) / columns).floorToDouble();
+
+        // All features on one row -> enable the magnifying dock.
+        if (columns >= _features.length) {
+          return _buildDock(cardWidth, gap);
+        }
 
         return Wrap(
           spacing: gap,
@@ -163,6 +187,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: feature.icon,
                 color: feature.color,
                 width: cardWidth,
+                height: _dockBaseHeight,
                 locked: feature.requiresPremium && !widget.isPremium,
                 onTap: () => _openFeature(context, feature),
               ),
@@ -170,6 +195,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       },
     );
+  }
+
+  // The single-row desktop layout. Each card is wrapped in a MouseRegion +
+  // AnimatedScale so hovering one pops it out while its neighbours ease down in
+  // size. The row is given extra height so the magnified card isn't clipped.
+  Widget _buildDock(double cardWidth, double gap) {
+    return SizedBox(
+      height: _dockBaseHeight * _hoverPeakScale + 28,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (var i = 0; i < _features.length; i++) ...[
+            if (i > 0) SizedBox(width: gap),
+            _buildDockCard(context, i, cardWidth),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDockCard(BuildContext context, int index, double cardWidth) {
+    final feature = _features[index];
+    return MouseRegion(
+      onEnter: (_) => _hoveredFeature.value = index,
+      onExit: (_) {
+        // Guard against a stale exit clearing a newer hover.
+        if (_hoveredFeature.value == index) _hoveredFeature.value = null;
+      },
+      // Only the cards listen to the hovered index, so a hover rebuilds these
+      // five lightweight wrappers - never the header or the surrounding list -
+      // and AnimatedScale runs the frames on the GPU from there.
+      child: ValueListenableBuilder<int?>(
+        valueListenable: _hoveredFeature,
+        builder: (context, hovered, _) {
+          return AnimatedScale(
+            scale: _hoverScale(hovered, index),
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            child: AppFeatureCard(
+              title: feature.title,
+              subtitle: feature.subtitle,
+              icon: feature.icon,
+              color: feature.color,
+              width: cardWidth,
+              height: _dockBaseHeight,
+              elevated: hovered == index,
+              locked: feature.requiresPremium && !widget.isPremium,
+              onTap: () => _openFeature(context, feature),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Scale for a card given which one is hovered: the hovered card grows, and
+  // each step further away shrinks a little more, so the focused card visibly
+  // pops out of the row. 1.0 for every card when nothing is hovered.
+  double _hoverScale(int? hovered, int index) {
+    if (hovered == null) return 1.0;
+    switch ((hovered - index).abs()) {
+      case 0:
+        return _hoverPeakScale;
+      case 1:
+        return 0.95;
+      case 2:
+        return 0.88;
+      default:
+        return 0.85;
+    }
   }
 
   void _openFeature(BuildContext context, _FeatureDef feature) {
