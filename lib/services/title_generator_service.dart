@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'ai_endpoint.dart';
+
 // Calls our own /api/nararouter Vercel serverless function to turn selected
 // filter chips into capstone title suggestions. That function forwards to
 // NaraRouter (an OpenAI-compatible model gateway) with the API key attached
@@ -23,7 +25,7 @@ class TitleGeneratorService {
       technologies: technologies,
     );
 
-    final uri = Uri.parse('/api/nararouter');
+    final uri = Uri.parse(naraRouterEndpoint);
 
     final response = await http.post(
       uri,

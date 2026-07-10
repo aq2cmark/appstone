@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'ai_endpoint.dart';
+
 // One row of the official Capstone Manuscript rubric (Section 8.3 of the DCT
 // CCS Capstone Manual). Kept as data so the exact wording drives BOTH the AI
 // prompt and the on-screen criteria list - one source of truth, no drift.
@@ -209,7 +211,7 @@ $paperText
   }
 
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
-    final uri = Uri.parse('/api/nararouter');
+    final uri = Uri.parse(naraRouterEndpoint);
 
     final response = await http.post(
       uri,

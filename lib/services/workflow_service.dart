@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 import '../models/workflow_plan.dart';
 
+import 'ai_endpoint.dart';
+
 // Result of asking the AI to read a paper and plan the remaining work: a short
 // read on the paper's current state plus the ordered, weighted phases.
 class WorkflowGeneration {
@@ -89,7 +91,7 @@ $paperText
   }
 
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
-    final uri = Uri.parse('/api/nararouter');
+    final uri = Uri.parse(naraRouterEndpoint);
 
     final response = await http.post(
       uri,

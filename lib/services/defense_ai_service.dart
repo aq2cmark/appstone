@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'ai_endpoint.dart';
+
 // One question/answer pair from a practice session, used to build the
 // final transcript sent to the AI for scoring.
 class QaExchange {
@@ -52,7 +54,7 @@ class DefenseAiService {
   static const _model = 'mistral-large';
 
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
-    final uri = Uri.parse('/api/nararouter');
+    final uri = Uri.parse(naraRouterEndpoint);
 
     final response = await http.post(
       uri,
