@@ -76,6 +76,10 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
                         : const Icon(Icons.fact_check),
                     label: Text(_checking ? 'Checking...' : 'Check Paper'),
                   ),
+                  if (_checking) ...[
+                    const SizedBox(height: 20),
+                    _buildLoadingCard(),
+                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     _buildErrorCard(_error!),
@@ -143,6 +147,40 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
               onPressed: _checking ? null : _pickPaper,
               icon: const Icon(Icons.folder_open),
               label: const Text('Select File'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingCard() {
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: const Padding(
+        padding: EdgeInsets.all(24),
+        child: Column(
+          children: [
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: AppColors.primary,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Analyzing your paper…',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            SizedBox(height: 6),
+            Text(
+              'The AI is reading your manuscript and grading it against the '
+              'rubric. This usually takes 20–60 seconds — keep this screen open.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textGrey),
             ),
           ],
         ),

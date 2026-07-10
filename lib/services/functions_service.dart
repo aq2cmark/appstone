@@ -63,6 +63,24 @@ class FunctionsService {
     });
   }
 
+  // Owner-only, run once: create Firebase Auth logins for all existing
+  // students. Returns { migrated, skipped, failures: [...] }.
+  Future<Map<String, dynamic>> migrateStudents() {
+    return _call('migrateStudents', {});
+  }
+
+  // Owner-only: request an ownership transfer. Emails the owner a confirmation
+  // link via Brevo. [appOrigin] is where the link should land (the app URL).
+  Future<void> requestOwnershipTransfer({
+    required String toEmail,
+    required String appOrigin,
+  }) {
+    return _call('requestOwnershipTransfer', {
+      'toEmail': toEmail,
+      'appOrigin': appOrigin,
+    });
+  }
+
   // Public: self-serve "forgot password" - emails a reset link via Brevo.
   // Accepts a Student ID or an email. Always succeeds so it never reveals
   // whether an account exists.

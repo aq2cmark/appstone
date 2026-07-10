@@ -41,7 +41,7 @@ const BREVO_API_KEY = defineSecret('BREVO_API_KEY');
 // you verified inside Brevo, or emails will bounce):
 //   BREVO_SENDER_EMAIL=you@yourschool.edu
 const BREVO_SENDER_EMAIL = defineString('BREVO_SENDER_EMAIL');
-const BREVO_SENDER_NAME = defineString('BREVO_SENDER_NAME', { default: 'AppStone' });
+const BREVO_SENDER_NAME = defineString('BREVO_SENDER_NAME', { default: 'Appstone' });
 
 const FieldValue = admin.firestore.FieldValue;
 const db = () => admin.firestore();
@@ -338,9 +338,9 @@ exports.sendPasswordResetEmail = onCall(
 
     await sendBrevoEmail({
       to: email,
-      subject: 'Reset your AppStone password',
+      subject: 'Reset your Appstone password',
       htmlContent:
-        `<p>We received a request to reset your AppStone password.</p>` +
+        `<p>We received a request to reset your Appstone password.</p>` +
         `<p><a href="${link}">Click here to set a new password</a>. ` +
         `If you didn't ask for this, you can safely ignore this email.</p>`,
     });
@@ -398,14 +398,156 @@ exports.inviteAdmin = onCall(
     await sendBrevoEmail({
       to: email,
       toName: name,
-      subject: 'You have been invited as an AppStone admin',
+      subject: 'You have been invited as an Appstone admin',
       htmlContent:
         `<p>Hi ${name || ''},</p>` +
-        `<p>You've been invited to the AppStone admin portal. ` +
+        `<p>You've been invited to the Appstone admin portal. ` +
         `<a href="${link}">Click here to set your password</a>, then sign in with your email.</p>`,
     });
 
     await writeAudit(actor, 'admin.invite', `Invited admin ${email}`);
     return { ok: true };
+  },
+);
+
+// Owner-only: request an ownership transfer. Records the pending target on the
+// owner's admin doc, then emails the OWNER (via Brevo) a sign-in confirmation
+// link - proving they still control the inbox before the swap. The verify +
+// role swap still happen client-side after they click and confirm, so an
+// email scanner opening the link can't trigger the transfer on its own.
+exports.requestOwnershipTransfer = onCall(
+  { region: REGION, maxInstances: 10, secrets: [BREVO_API_KEY] },
+  async (request) => {
+    const actor = await assertAuthedAdmin(request, { ownerOnly: true });
+    const toEmail = String(request.data?.toEmail || '').trim().toLowerCase();
+    const appOrigin = String(request.data?.appOrigin || '').trim();
+    if (!toEmail || !appOrigin) {
+      throw new HttpsError('invalid-argument', 'Target admin and app origin are required.');
+    }
+
+    const targetSnap = await db().collection('admins').doc(toEmail).get();
+    if (!targetSnap.exists) {
+      throw new HttpsError('not-found', 'That admin record no longer exists.');
+    }
+    if (targetSnap.data().active !== true) {
+      throw new HttpsError('failed-precondition', 'Reactivate this admin before making them owner.');
+    }
+
+    const ownerEmail = actor.email;
+    await db().collection('admins').doc(ownerEmail).update({
+      pendingOwnerTransferTo: toEmail,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Same sign-in link the old flow used, but generated (not sent) here so we
+    // can deliver it through Brevo. The continue URL carries the transfer
+    // target so the app can show the right confirmation.
+    const continueUrl = `${appOrigin}?intent=ownerTransfer&to=${encodeURIComponent(toEmail)}`;
+    const link = await admin.auth().generateSignInWithEmailLink(ownerEmail, {
+      url: continueUrl,
+      handleCodeInApp: true,
+    });
+
+    await sendBrevoEmail({
+      to: ownerEmail,
+      subject: 'Confirm Appstone ownership transfer',
+      htmlContent:
+        `<p>You requested to transfer Appstone ownership to <b>${toEmail}</b>.</p>` +
+        `<p><a href="${link}">Click here to confirm the transfer</a>. ` +
+        `If you didn't request this, ignore this email and nothing changes.</p>`,
+    });
+
+    await writeAudit(actor, 'admin.transferRequest', `Requested ownership transfer to ${toEmail}`);
+    return { ok: true };
+  },
+);
+
+// ---- Phase 3: one-time migration -------------------------------------------
+
+// Owner-only, run once. Gives every existing student (who has a plaintext
+// password in Firestore but no Firebase Auth login yet) a real Auth account
+// using their SAME email + password, so nothing changes for them. Adds their
+// uid + the lookup indexes. It deliberately KEEPS the plaintext password for
+// now, so the old login keeps working until we flip to Auth login and lock the
+// rules (the final step). Safe to run multiple times - already-migrated
+// students (those with a uid) are skipped.
+exports.migrateStudents = onCall(
+  { region: REGION, maxInstances: 3, timeoutSeconds: 300 },
+  async (request) => {
+    const actor = await assertAuthedAdmin(request, { ownerOnly: true });
+
+    const groupsSnap = await db().collection('groups').get();
+    let migrated = 0;
+    let skipped = 0;
+    const failures = [];
+
+    for (const groupDoc of groupsSnap.docs) {
+      const groupId = groupDoc.id;
+      const students = groupDoc.data().students || [];
+      let changed = false;
+      const updated = [];
+
+      for (const s of students) {
+        if (s.uid) {
+          skipped++;
+          updated.push(s);
+          continue;
+        }
+
+        const email = String(s.email || '').trim().toLowerCase();
+        const password = String(s.password || '');
+        const studentId = String(s.studentId || '');
+
+        if (!email || !email.includes('@') || password.length < 6) {
+          failures.push({ studentId, email, reason: 'Missing/invalid email or password (<6 chars)' });
+          updated.push(s);
+          continue;
+        }
+
+        let uid;
+        try {
+          const u = await admin.auth().createUser({
+            email,
+            password,
+            displayName: s.name || email,
+          });
+          uid = u.uid;
+        } catch (e) {
+          if (e.code === 'auth/email-already-exists') {
+            try {
+              uid = (await admin.auth().getUserByEmail(email)).uid;
+            } catch (_) {
+              failures.push({ studentId, email, reason: 'Email already exists but lookup failed' });
+              updated.push(s);
+              continue;
+            }
+          } else {
+            failures.push({ studentId, email, reason: e.message });
+            updated.push(s);
+            continue;
+          }
+        }
+
+        updated.push({ ...s, uid, id: s.id || uid });
+        await db().collection('studentIndex').doc(uid).set({ studentId, groupId, email });
+        await db().collection('studentIdToEmail').doc(studentId).set({ email, uid });
+        migrated++;
+        changed = true;
+      }
+
+      if (changed) {
+        await groupDoc.ref.update({
+          students: updated,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await writeAudit(
+      actor,
+      'students.migrate',
+      `Migrated ${migrated} students to Auth (${skipped} already done, ${failures.length} failed)`,
+    );
+    return { migrated, skipped, failures };
   },
 );

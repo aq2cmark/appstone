@@ -1,9 +1,9 @@
 import 'package:appstone/app_colors.dart';
 import 'package:appstone/screens/admin_portal_page.dart';
-import 'package:appstone/screens/admin_signup_page.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
+import 'package:appstone/services/functions_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -156,17 +156,6 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: _isLoading ? null : _showForgotPasswordDialog,
                     child: const Text('Forgot password?'),
                   ),
-                  TextButton(
-                    onPressed: _isLoading
-                        ? null
-                        : () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AdminSignupPage(),
-                            ),
-                          ),
-                    child: const Text('Invited as an admin? Create your account'),
-                  ),
                   const SizedBox(height: 12),
                 ],
               ),
@@ -296,13 +285,13 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Not a student: if it looks like an email, try the admin reset flow.
-      if (value.contains('@')) {
-        await _repo.sendAdminPasswordReset(value);
-        _showMessage('If this is an admin email, a reset link was sent.');
-      } else {
-        _showMessage('No account found for that Student ID.');
-      }
+      // Otherwise send a self-serve reset link via Brevo (through our Cloud
+      // Function). Works for admins now, and for students once they are on
+      // Firebase Auth. Kept generic so it never reveals whether an account
+      // exists.
+      await FunctionsService().sendPasswordResetEmail(value);
+      if (!mounted) return;
+      _showMessage('If an account matches that, a reset link has been emailed.');
     } catch (_) {
       if (mounted) {
         _showMessage('Could not send the request. Please try again.');
