@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import '../services/functions_service.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/section_header.dart';
 import 'admin_management_page.dart';
@@ -633,9 +634,30 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
 
   Future<void> registerStudent(StudentDraft draft) async {
     await runAction(() async {
-      final student = await _repo.registerStudent(draft);
-      showMessage(
-        'Created ${student.name}: ${student.studentId} / ${student.password}',
+      final created = await FunctionsService().createStudent(
+        name: draft.name,
+        email: draft.email,
+        groupId: draft.groupId,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Student Registered'),
+          content: SelectableText(
+            '${draft.name}\n\n'
+            'Student ID: ${created.studentId}\n'
+            'Temporary password: ${created.tempPassword}\n\n'
+            'Share these with the student. They can sign in with their Student '
+            'ID or email, then set their own password.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
       );
     }, null);
   }
@@ -827,8 +849,16 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
 
     if (confirm != true) return;
+    if (student.uid.isEmpty) {
+      showMessage('This student has no login yet. Refresh and try again.');
+      return;
+    }
     await runAction(
-      () => _repo.deleteStudent(group: group, student: student),
+      () => FunctionsService().deleteStudent(
+        uid: student.uid,
+        groupId: group.id,
+        studentId: student.studentId,
+      ),
       'Student deleted.',
     );
   }
@@ -856,11 +886,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
 
     if (confirm != true) return;
+    if (student.uid.isEmpty) {
+      showMessage('This student has no login yet. Refresh and try again.');
+      return;
+    }
 
     try {
-      final newPassword = await _repo.resetStudentPassword(
-        group: group,
-        student: student,
+      final newPassword = await FunctionsService().resetStudentPassword(
+        uid: student.uid,
+        groupId: group.id,
       );
       if (!mounted) return;
       await showDialog<void>(

@@ -167,10 +167,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _signIn() async {
-    final username = _usernameController.text.trim();
+    final identifier = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    if (username.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       _showMessage('Please enter your login details.');
       return;
     }
@@ -178,35 +178,49 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      // If the username looks like an email, try admin login first.
-      // If it isn't an admin auth account, the app still tries student login.
-      if (username.contains('@')) {
-        final admin = await _tryAdminLogin(username, password);
-        if (!mounted) return;
-        switch (admin.outcome) {
-          case _AdminOutcome.authorized:
-            _goTo(AdminPortalPage(role: admin.account!.role));
-            return;
-          case _AdminOutcome.denied:
-            _showMessage(admin.message ?? 'Admin access denied.');
-            return;
-          case _AdminOutcome.notAuthAccount:
-            break; // Not an admin login - fall through to student login.
-        }
+      // Everyone - admins and students - now signs in with Firebase Auth.
+      // Admins type their email; students may type their Student ID, which we
+      // translate to the email their Auth login uses.
+      final email = await _repo.resolveStudentEmail(identifier);
+      if (!mounted) return;
+      if (email == null) {
+        _showMessage('No account found for that Student ID or email.');
+        return;
       }
 
-      // Student login checks the Firestore-generated credentials.
-      final student = await _repo.signInStudent(
-        usernameOrEmail: username,
-        password: password,
-      );
+      final UserCredential credential;
+      try {
+        credential = await _repo.signInAdmin(email: email, password: password);
+      } on FirebaseAuthException {
+        _showMessage('Invalid Student ID/email or password.');
+        return;
+      }
+      final user = credential.user;
+      if (user == null) {
+        _showMessage('Invalid Student ID/email or password.');
+        return;
+      }
 
+      // Admin? An active `admins` record routes to the portal.
+      try {
+        final account = await _repo.resolveAdminAccess(
+          email: email,
+          uid: user.uid,
+        );
+        if (!mounted) return;
+        _goTo(AdminPortalPage(role: account.role));
+        return;
+      } on StateError {
+        // Not an admin - fall through to the student check.
+      }
+
+      // Student? A `studentIndex` record routes to the dashboard.
+      final student = await _repo.getStudentContextByUid(user.uid);
       if (!mounted) return;
       if (student != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(studentIdPrefsKey, student.student.id);
         await prefs.setString(groupIdPrefsKey, student.group.id);
-
         if (!mounted) return;
         _goTo(
           DashboardScreen(
@@ -215,14 +229,17 @@ class _LoginPageState extends State<LoginPage> {
             isPremium: student.group.isPremium,
             groupId: student.group.id,
             studentId: student.student.id,
-            // When true, the dashboard forces a password change on arrival
-            // because the student logged in with an admin-issued temp password.
+            // Forces a password change on arrival when they signed in with an
+            // admin-issued temp password.
             mustChangePassword: student.student.mustChangePassword,
           ),
         );
-      } else {
-        _showMessage('Invalid credentials.');
+        return;
       }
+
+      // Signed in but neither admin nor student - refuse and sign back out.
+      await _repo.signOut();
+      _showMessage('This account is not authorized to sign in here.');
     } catch (error) {
       _showMessage('Login failed: $error');
     } finally {
@@ -301,35 +318,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // Admin sign-in is two steps: authenticate with Firebase, then check the
-  // account is an active admin. A wrong password / non-admin email returns
-  // notAuthAccount so the caller can still try student login; a real Auth
-  // account that isn't an authorized admin is signed back out and denied.
-  Future<_AdminLoginResult> _tryAdminLogin(String email, String password) async {
-    final UserCredential credential;
-    try {
-      credential = await _repo.signInAdmin(email: email, password: password);
-    } catch (_) {
-      return const _AdminLoginResult(_AdminOutcome.notAuthAccount);
-    }
-
-    final uid = credential.user?.uid;
-    if (uid == null) {
-      return const _AdminLoginResult(_AdminOutcome.notAuthAccount);
-    }
-
-    try {
-      final account = await _repo.resolveAdminAccess(email: email, uid: uid);
-      return _AdminLoginResult(_AdminOutcome.authorized, account: account);
-    } catch (error) {
-      await _repo.signOut();
-      return _AdminLoginResult(
-        _AdminOutcome.denied,
-        message: error is StateError ? error.message : error.toString(),
-      );
-    }
-  }
-
   void _goTo(Widget page) {
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => page));
   }
@@ -339,19 +327,4 @@ class _LoginPageState extends State<LoginPage> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
-}
-
-// Outcome of an admin login attempt.
-// - notAuthAccount: not a Firebase admin account (wrong password or a student);
-//   the caller should try student login next.
-// - authorized: authenticated and an active admin.
-// - denied: authenticated but not an authorized/active admin (signed back out).
-enum _AdminOutcome { notAuthAccount, authorized, denied }
-
-class _AdminLoginResult {
-  const _AdminLoginResult(this.outcome, {this.account, this.message});
-
-  final _AdminOutcome outcome;
-  final AdminAccount? account;
-  final String? message;
 }

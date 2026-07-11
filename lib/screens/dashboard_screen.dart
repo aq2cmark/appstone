@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import '../services/functions_service.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/section_header.dart';
 import 'auth_gate.dart';
@@ -47,7 +49,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _repo = AdminRepository();
   bool _promptedForTempChange = false;
   // Index of the feature card the mouse is currently over, driving the desktop
   // "dock" magnification. Null when nothing is hovered (and always null on
@@ -350,16 +351,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
       showMessage(context, 'New passwords do not match.');
       return;
     }
+    if (newPassword.length < 6) {
+      showMessage(context, 'New password must be at least 6 characters.');
+      return;
+    }
 
     try {
-      await _repo.changeStudentPassword(
-        groupId: widget.groupId,
-        studentId: widget.studentId,
-        currentPassword: currentPassword,
-        newPassword: newPassword,
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        throw StateError('You are not signed in.');
+      }
+      // Prove the current password (re-auth) before Firebase lets us change it.
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
       );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
       if (!context.mounted) return;
       showMessage(context, 'Password changed.');
+    } on FirebaseAuthException catch (error) {
+      if (!context.mounted) return;
+      final wrong =
+          error.code == 'wrong-password' || error.code == 'invalid-credential';
+      showMessage(
+        context,
+        wrong
+            ? 'Current password is incorrect.'
+            : (error.message ?? 'Could not change password.'),
+      );
     } catch (error) {
       if (!context.mounted) return;
       showMessage(context, error.toString());
@@ -433,15 +453,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         showMessage(context, 'Passwords do not match. Please try again.');
         continue;
       }
+      if (newPassword.length < 6) {
+        showMessage(context, 'Password must be at least 6 characters.');
+        continue;
+      }
 
       try {
-        await _repo.completeTempPasswordChange(
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw StateError('You are not signed in.');
+        // They just signed in, so no re-auth is needed to set a new password.
+        await user.updatePassword(newPassword);
+        // Clear the "must change" flag on their record (server-side, keyed to
+        // their own uid).
+        await FunctionsService().finishStudentPasswordChange(
           groupId: widget.groupId,
-          studentId: widget.studentId,
-          newPassword: newPassword,
         );
         done = true;
         if (mounted) showMessage(context, 'Password updated. You are all set!');
+      } on FirebaseAuthException catch (error) {
+        if (mounted) {
+          showMessage(
+            context,
+            error.code == 'requires-recent-login'
+                ? 'Please log in again, then set your password.'
+                : (error.message ?? 'Could not update password.'),
+          );
+        }
       } catch (error) {
         if (mounted) showMessage(context, error.toString());
       }

@@ -50,25 +50,41 @@ class _AuthGateState extends State<AuthGate> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // A restored Firebase session is only an admin if it still matches an
-      // active `admins` record, so a deactivated admin is kicked to login.
+      // Both admins and students now have Firebase Auth sessions. Try admin
+      // first; if the account isn't an admin, try to restore it as a student;
+      // if it's neither (or a deactivated admin), sign out to the login screen.
       try {
         final account = await _repo.resolveAdminAccess(
           email: user.email ?? '',
           uid: user.uid,
         );
         _finish(AdminPortalPage(role: account.role));
+        return;
+      } on StateError {
+        // Not an admin - fall through to the student check.
       } catch (error) {
         await _repo.signOut();
-        // Surface why the restored session was rejected instead of silently
-        // bouncing to a blank login screen - this is what made the earlier
-        // permission-denied error so hard to diagnose.
+        _finish(LoginPage(initialError: error.toString()));
+        return;
+      }
+
+      final student = await _repo.getStudentContextByUid(user.uid);
+      if (student != null) {
         _finish(
-          LoginPage(
-            initialError: error is StateError ? error.message : error.toString(),
+          DashboardScreen(
+            studentName: student.student.name,
+            groupName: student.group.name,
+            isPremium: student.group.isPremium,
+            groupId: student.group.id,
+            studentId: student.student.id,
+            mustChangePassword: student.student.mustChangePassword,
           ),
         );
+        return;
       }
+
+      await _repo.signOut();
+      _finish(const LoginPage());
       return;
     }
 

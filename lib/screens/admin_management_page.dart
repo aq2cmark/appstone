@@ -75,8 +75,6 @@ class AdminManagementPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            _buildMigrationCard(context),
-            const SizedBox(height: 16),
             for (final admin in admins) _buildAdminCard(context, admin),
           ],
         );
@@ -188,116 +186,6 @@ class AdminManagementPage extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  // One-time maintenance card: give existing students real Firebase Auth
-  // logins. Owner-only page, so this is owner-gated already.
-  Widget _buildMigrationCard(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'One-time setup',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Give every existing student a real Firebase Auth login, using '
-              'their current email and password - nothing changes for them. Run '
-              'this once before student login switches to Auth. Safe to run again.',
-              style: TextStyle(color: AppColors.textGrey),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () => _migrateStudents(context),
-                icon: const Icon(Icons.sync),
-                label: const Text('Migrate Students to Auth'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _migrateStudents(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final confirm = await _confirm(
-      context,
-      title: 'Migrate students to Firebase Auth?',
-      body: 'This creates a real login for every existing student using their '
-          'current email and password. It is safe to run more than once.',
-      action: 'Migrate',
-    );
-    if (!confirm) return;
-
-    if (!context.mounted) return;
-    // Non-dismissible progress dialog while the function runs.
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Expanded(child: Text('Migrating students…')),
-          ],
-        ),
-      ),
-    );
-
-    try {
-      final result = await FunctionsService().migrateStudents();
-      if (!context.mounted) return;
-      Navigator.pop(context); // close progress
-      final migrated = result['migrated'] ?? 0;
-      final skipped = result['skipped'] ?? 0;
-      final failures = (result['failures'] as List?) ?? const [];
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Migration complete'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Migrated: $migrated'),
-              Text('Already done (skipped): $skipped'),
-              Text('Failed: ${failures.length}'),
-              if (failures.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'Failures:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                for (final f in failures)
-                  Text(
-                    '• ${f['studentId'] ?? ''} ${f['email'] ?? ''} — ${f['reason'] ?? ''}',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-              ],
-            ],
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      Navigator.pop(context); // close progress
-      messenger.showSnackBar(SnackBar(content: Text(error.toString())));
-    }
   }
 
   // ---- Actions --------------------------------------------------------------

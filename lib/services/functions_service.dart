@@ -63,10 +63,10 @@ class FunctionsService {
     });
   }
 
-  // Owner-only, run once: create Firebase Auth logins for all existing
-  // students. Returns { migrated, skipped, failures: [...] }.
-  Future<Map<String, dynamic>> migrateStudents() {
-    return _call('migrateStudents', {});
+  // Student: clear the "must change password" flag on their own record after
+  // they set a new password (their uid is taken from the auth token server-side).
+  Future<void> finishStudentPasswordChange({required String groupId}) {
+    return _call('finishStudentPasswordChange', {'groupId': groupId});
   }
 
   // Owner-only: request an ownership transfer. Emails the owner a confirmation

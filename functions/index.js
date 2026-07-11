@@ -462,92 +462,32 @@ exports.requestOwnershipTransfer = onCall(
   },
 );
 
-// ---- Phase 3: one-time migration -------------------------------------------
+// ---- Student self-service --------------------------------------------------
 
-// Owner-only, run once. Gives every existing student (who has a plaintext
-// password in Firestore but no Firebase Auth login yet) a real Auth account
-// using their SAME email + password, so nothing changes for them. Adds their
-// uid + the lookup indexes. It deliberately KEEPS the plaintext password for
-// now, so the old login keeps working until we flip to Auth login and lock the
-// rules (the final step). Safe to run multiple times - already-migrated
-// students (those with a uid) are skipped.
-exports.migrateStudents = onCall(
-  { region: REGION, maxInstances: 3, timeoutSeconds: 300 },
+// Called by a signed-in student right after they set their own password, to
+// clear the "must change" flag on their record. request.auth.uid guarantees a
+// student can only ever clear their own flag.
+exports.finishStudentPasswordChange = onCall(
+  { region: REGION, maxInstances: 10 },
   async (request) => {
-    const actor = await assertAuthedAdmin(request, { ownerOnly: true });
-
-    const groupsSnap = await db().collection('groups').get();
-    let migrated = 0;
-    let skipped = 0;
-    const failures = [];
-
-    for (const groupDoc of groupsSnap.docs) {
-      const groupId = groupDoc.id;
-      const students = groupDoc.data().students || [];
-      let changed = false;
-      const updated = [];
-
-      for (const s of students) {
-        if (s.uid) {
-          skipped++;
-          updated.push(s);
-          continue;
-        }
-
-        const email = String(s.email || '').trim().toLowerCase();
-        const password = String(s.password || '');
-        const studentId = String(s.studentId || '');
-
-        if (!email || !email.includes('@') || password.length < 6) {
-          failures.push({ studentId, email, reason: 'Missing/invalid email or password (<6 chars)' });
-          updated.push(s);
-          continue;
-        }
-
-        let uid;
-        try {
-          const u = await admin.auth().createUser({
-            email,
-            password,
-            displayName: s.name || email,
-          });
-          uid = u.uid;
-        } catch (e) {
-          if (e.code === 'auth/email-already-exists') {
-            try {
-              uid = (await admin.auth().getUserByEmail(email)).uid;
-            } catch (_) {
-              failures.push({ studentId, email, reason: 'Email already exists but lookup failed' });
-              updated.push(s);
-              continue;
-            }
-          } else {
-            failures.push({ studentId, email, reason: e.message });
-            updated.push(s);
-            continue;
-          }
-        }
-
-        updated.push({ ...s, uid, id: s.id || uid });
-        await db().collection('studentIndex').doc(uid).set({ studentId, groupId, email });
-        await db().collection('studentIdToEmail').doc(studentId).set({ email, uid });
-        migrated++;
-        changed = true;
-      }
-
-      if (changed) {
-        await groupDoc.ref.update({
-          students: updated,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in first.');
+    }
+    const uid = request.auth.uid;
+    const groupId = String(request.data?.groupId || '').trim();
+    if (!groupId) {
+      throw new HttpsError('invalid-argument', 'groupId is required.');
     }
 
-    await writeAudit(
-      actor,
-      'students.migrate',
-      `Migrated ${migrated} students to Auth (${skipped} already done, ${failures.length} failed)`,
-    );
-    return { migrated, skipped, failures };
+    const groupRef = db().collection('groups').doc(groupId);
+    await db().runTransaction(async (tx) => {
+      const snap = await tx.get(groupRef);
+      if (!snap.exists) return;
+      const students = (snap.data().students || []).map((s) =>
+        s.uid === uid ? { ...s, mustChangePassword: false } : s,
+      );
+      tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });
+    });
+    return { ok: true };
   },
 );

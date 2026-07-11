@@ -96,6 +96,22 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // --- Student login lookups ----------------------------------------------
+    // studentIdToEmail lets Student-ID login resolve to the email BEFORE the
+    // student is signed in, so a single unauthenticated `get` is allowed (you
+    // must already know the exact Student ID; the list is never enumerable).
+    // studentIndex maps a signed-in student's uid to their group. Both are
+    // written ONLY by Cloud Functions (Admin SDK bypasses rules), so all
+    // client writes are denied.
+    match /studentIdToEmail/{studentId} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+    match /studentIndex/{uid} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Anything not matched above is denied by default.
   }
 }

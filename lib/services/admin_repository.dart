@@ -797,6 +797,43 @@ class AdminRepository {
     return null;
   }
 
+  // ---- Firebase Auth student login helpers ----------------------------------
+
+  // Resolves a login identifier to the email Firebase Auth uses. An email is
+  // returned as-is (lower-cased); a Student ID (e.g. STU001) is translated via
+  // the public studentIdToEmail lookup. Returns null when a Student ID has no
+  // match, so the caller can show "no account found".
+  Future<String?> resolveStudentEmail(String identifier) async {
+    final trimmed = identifier.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.contains('@')) return trimmed.toLowerCase();
+    final snapshot = await _firestore
+        .collection('studentIdToEmail')
+        .doc(trimmed.toUpperCase())
+        .get();
+    if (!snapshot.exists) return null;
+    return snapshot.data()?['email'] as String?;
+  }
+
+  // After a student signs in with Firebase Auth, maps their uid to the group +
+  // student record the dashboard needs. Returns null if the uid isn't a student
+  // (e.g. it's an admin), so the caller can route accordingly.
+  Future<StudentLoginResult?> getStudentContextByUid(String uid) async {
+    final indexSnap =
+        await _firestore.collection('studentIndex').doc(uid).get();
+    if (!indexSnap.exists) return null;
+    final groupId = indexSnap.data()?['groupId'] as String?;
+    if (groupId == null) return null;
+    final group = await getGroup(groupId);
+    if (group == null) return null;
+    for (final student in group.students) {
+      if (student.uid == uid) {
+        return StudentLoginResult(group: group, student: student);
+      }
+    }
+    return null;
+  }
+
   String _generatePassword(int seed) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final random = Random(DateTime.now().microsecondsSinceEpoch + seed);
@@ -936,6 +973,7 @@ class StudentAccount {
     String? tempPassword,
     this.mustChangePassword = false,
     this.resetRequested = false,
+    this.uid = '',
   }) : tempPassword = tempPassword ?? password;
 
   factory StudentAccount.fromMap(Map<dynamic, dynamic> map) {
@@ -951,6 +989,9 @@ class StudentAccount {
       tempPassword: map['tempPassword'] as String? ?? password,
       mustChangePassword: map['mustChangePassword'] as bool? ?? false,
       resetRequested: map['resetRequested'] as bool? ?? false,
+      // The student's Firebase Auth uid. Empty only for a legacy record that
+      // predates the Auth migration.
+      uid: map['uid'] as String? ?? '',
     );
   }
 
@@ -975,6 +1016,10 @@ class StudentAccount {
   // Drives the notification icon next to the student on the admin dashboard.
   final bool resetRequested;
 
+  // The student's Firebase Auth uid, used to reset/delete their login and to
+  // match them after they sign in. Empty for a legacy, un-migrated record.
+  final String uid;
+
   StudentAccount copyWith({
     String? name,
     String? password,
@@ -991,6 +1036,7 @@ class StudentAccount {
       tempPassword: tempPassword ?? this.tempPassword,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       resetRequested: resetRequested ?? this.resetRequested,
+      uid: uid,
     );
   }
 
@@ -1004,6 +1050,7 @@ class StudentAccount {
       'tempPassword': tempPassword,
       'mustChangePassword': mustChangePassword,
       'resetRequested': resetRequested,
+      'uid': uid,
     };
   }
 }
