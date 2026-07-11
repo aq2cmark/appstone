@@ -127,11 +127,27 @@ exports.nararouter = onRequest(
     cors: true,
     memory: '256MiB',
     timeoutSeconds: 120,
-    maxInstances: 5,
+    // Locked to signed-in users below, so this can scale for real traffic
+    // without a random script being able to burn AI tokens.
+    maxInstances: 100,
   },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: { message: 'Method not allowed' } });
+      return;
+    }
+    // Require a valid Firebase login - only signed-in users of the app may use
+    // the proxy. A script that merely finds the URL has no token and is refused.
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.substring(7) : '';
+    if (!token) {
+      res.status(401).json({ error: { message: 'Sign in required to use AI features.' } });
+      return;
+    }
+    try {
+      await admin.auth().verifyIdToken(token);
+    } catch (_) {
+      res.status(401).json({ error: { message: 'Your session expired. Sign in again.' } });
       return;
     }
     try {
@@ -222,6 +238,9 @@ exports.createStudent = onCall(
         email,
         studentId,
         uid,
+        // The shareable temp password, kept only until the student sets their
+        // own (then cleared). Their real password lives in Auth, never here.
+        tempPassword,
         mustChangePassword: true,
         resetRequested: false,
       };
@@ -268,7 +287,9 @@ exports.resetStudentPassword = onCall(
       const snap = await tx.get(groupRef);
       if (!snap.exists) return;
       const students = (snap.data().students || []).map((s) =>
-        s.uid === uid ? { ...s, mustChangePassword: true, resetRequested: false } : s,
+        s.uid === uid
+          ? { ...s, tempPassword, mustChangePassword: true, resetRequested: false }
+          : s,
       );
       tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });
     });
@@ -484,10 +505,62 @@ exports.finishStudentPasswordChange = onCall(
       const snap = await tx.get(groupRef);
       if (!snap.exists) return;
       const students = (snap.data().students || []).map((s) =>
-        s.uid === uid ? { ...s, mustChangePassword: false } : s,
+        // Clear the temp password once they've set their own - it's no longer
+        // valid and shouldn't linger in Firestore.
+        s.uid === uid ? { ...s, mustChangePassword: false, tempPassword: '' } : s,
       );
       tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });
     });
     return { ok: true };
+  },
+);
+
+// ---- Final cleanup ---------------------------------------------------------
+
+// Owner-only, run once after the Auth cutover is confirmed working. Strips the
+// leftover plaintext `password` field from every student record (the real
+// password lives in Auth now), and clears any stale temp password from students
+// who have already set their own. Safe to run more than once.
+exports.cleanupStudentSecrets = onCall(
+  { region: REGION, maxInstances: 3, timeoutSeconds: 300 },
+  async (request) => {
+    const actor = await assertAuthedAdmin(request, { ownerOnly: true });
+
+    const groupsSnap = await db().collection('groups').get();
+    let cleaned = 0;
+
+    for (const groupDoc of groupsSnap.docs) {
+      const students = groupDoc.data().students || [];
+      let changed = false;
+
+      const updated = students.map((s) => {
+        const next = { ...s };
+        let touched = false;
+        if ('password' in next) {
+          delete next.password;
+          touched = true;
+        }
+        // A temp password only applies until the student sets their own.
+        if (next.mustChangePassword === false && next.tempPassword) {
+          next.tempPassword = '';
+          touched = true;
+        }
+        if (touched) {
+          cleaned++;
+          changed = true;
+        }
+        return next;
+      });
+
+      if (changed) {
+        await groupDoc.ref.update({
+          students: updated,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await writeAudit(actor, 'students.cleanup', `Stripped stored secrets from ${cleaned} student records`);
+    return { cleaned };
   },
 );

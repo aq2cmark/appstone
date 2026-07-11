@@ -7,6 +7,7 @@ import 'package:csv/csv.dart';
 import 'package:xml/xml.dart';
 
 import 'admin_repository.dart';
+import 'functions_service.dart';
 
 // Thrown for problems with the whole file (wrong type, missing header row,
 // missing required columns). Per-row problems are reported in the preview
@@ -170,6 +171,7 @@ class StudentImportService {
       for (final group in groups) group.name.trim().toLowerCase(): group.id,
     };
 
+    final functions = FunctionsService();
     final created = <ImportedStudent>[];
     final failures = <ImportFailure>[];
 
@@ -180,12 +182,17 @@ class StudentImportService {
         groupId ??= await repo.createGroupReturningId(row.group.trim());
         nameToId[key] = groupId;
 
-        final student = await repo.registerStudent(
-          StudentDraft(name: row.name, email: row.email, groupId: groupId),
+        // Goes through the same Cloud Function as single registration, so each
+        // imported student gets a real Firebase Auth login (not a Firestore-only
+        // record) and a one-time temp password.
+        final student = await functions.createStudent(
+          name: row.name,
+          email: row.email,
+          groupId: groupId,
         );
         created.add(ImportedStudent(
-          name: student.name,
-          email: student.email,
+          name: row.name,
+          email: row.email,
           studentId: student.studentId,
           tempPassword: student.tempPassword,
           group: row.group.trim(),

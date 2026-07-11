@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../app_colors.dart';
 import '../services/admin_repository.dart';
+import '../services/credentials_printer.dart';
 import '../services/functions_service.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/section_header.dart';
@@ -235,16 +236,24 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         return ListView(
           padding: EdgeInsets.all(pagePadding),
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                  ),
+                  onPressed: createGroup,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Create New Group'),
                 ),
-                onPressed: createGroup,
-                icon: const Icon(Icons.add),
-                label: const Text('Create New Group'),
-              ),
+                OutlinedButton.icon(
+                  onPressed: () => _printCredentials(groups),
+                  icon: const Icon(Icons.print),
+                  label: const Text('Print Credentials'),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             Wrap(
@@ -600,6 +609,14 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     );
   }
 
+  Future<void> _printCredentials(List<CapstoneGroup> groups) async {
+    try {
+      await CredentialsPrinter.printRoster(groups);
+    } catch (error) {
+      showMessage('Could not open the print view: $error');
+    }
+  }
+
   Future<void> createGroup() async {
     // Dialog returns the typed group name, then Firestore creates the group.
     final controller = TextEditingController();
@@ -633,13 +650,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> registerStudent(StudentDraft draft) async {
-    await runAction(() async {
-      final created = await FunctionsService().createStudent(
-        name: draft.name,
-        email: draft.email,
-        groupId: draft.groupId,
+    try {
+      final created = await _runWithProgress(
+        () => FunctionsService().createStudent(
+          name: draft.name,
+          email: draft.email,
+          groupId: draft.groupId,
+        ),
       );
-      if (!mounted) return;
+      if (!mounted || created == null) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -659,7 +678,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           ],
         ),
       );
-    }, null);
+    } catch (error) {
+      showMessage(error.toString());
+    }
   }
 
   Future<void> grantPremium(CapstoneGroup group) async {
@@ -853,14 +874,18 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       showMessage('This student has no login yet. Refresh and try again.');
       return;
     }
-    await runAction(
-      () => FunctionsService().deleteStudent(
-        uid: student.uid,
-        groupId: group.id,
-        studentId: student.studentId,
-      ),
-      'Student deleted.',
-    );
+    try {
+      await _runWithProgress(
+        () => FunctionsService().deleteStudent(
+          uid: student.uid,
+          groupId: group.id,
+          studentId: student.studentId,
+        ),
+      );
+      if (mounted) showMessage('Student deleted.');
+    } catch (error) {
+      showMessage(error.toString());
+    }
   }
 
   Future<void> resetStudentPassword(
@@ -892,11 +917,13 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     }
 
     try {
-      final newPassword = await FunctionsService().resetStudentPassword(
-        uid: student.uid,
-        groupId: group.id,
+      final newPassword = await _runWithProgress(
+        () => FunctionsService().resetStudentPassword(
+          uid: student.uid,
+          groupId: group.id,
+        ),
       );
-      if (!mounted) return;
+      if (!mounted || newPassword == null) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -933,6 +960,24 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       if (success != null) showMessage(success);
     } catch (error) {
       showMessage(error.toString());
+    }
+  }
+
+  // Shows a blocking spinner while [op] runs. Register/reset/delete call Cloud
+  // Functions, which take a moment (a network round-trip, sometimes a cold
+  // start), so this keeps the tap from feeling unresponsive.
+  Future<T?> _runWithProgress<T>(Future<T> Function() op) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: SizedBox(width: 52, height: 52, child: CircularProgressIndicator()),
+      ),
+    );
+    try {
+      return await op();
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
     }
   }
 

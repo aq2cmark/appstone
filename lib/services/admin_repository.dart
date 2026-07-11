@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -216,89 +214,6 @@ class AdminRepository {
     );
   }
 
-  // ---- Admin invite claim via email link -------------------------------------
-  //
-  // Claiming an invite used to be "type the invited email + a new password",
-  // which meant anyone who merely knew or guessed an invited email could
-  // create the account themselves before the real person did. Claiming now
-  // requires proving inbox ownership first via Firebase's passwordless
-  // "sign in with email link": the link is emailed by Firebase directly to the
-  // invited address, so only someone who can read that inbox can ever obtain
-  // it. Only after signing in with that link can a password be set and the
-  // uid linked onto the invited `admins` doc.
-
-  bool isAdminClaimLink(String link) => _auth.isSignInWithEmailLink(link);
-
-  // Step 1: send the verification link. Checked against the invite first so
-  // an un-invited or deactivated email gets an immediate, clear error instead
-  // of silently receiving nothing.
-  Future<void> sendAdminClaimLink(String email) async {
-    final lower = email.trim().toLowerCase();
-    if (lower.isEmpty || !lower.contains('@')) {
-      throw StateError('Enter a valid email address.');
-    }
-    final snapshot = await _firestore.collection('admins').doc(lower).get();
-    if (!snapshot.exists) {
-      throw StateError(
-        'This email has not been invited. Ask an owner to invite you first.',
-      );
-    }
-    final account = AdminAccount.fromSnapshot(snapshot);
-    if (!account.active) {
-      throw StateError('This admin invite has been deactivated.');
-    }
-
-    await _auth.sendSignInLinkToEmail(
-      email: lower,
-      actionCodeSettings: ActionCodeSettings(
-        url: Uri.base.origin,
-        handleCodeInApp: true,
-      ),
-    );
-  }
-
-  // Step 2: called after the invitee opens the link. Signing in with it is
-  // Firebase's proof they control the inbox; only then do we set the password
-  // and link their uid onto the invited doc. Re-checks the invite (not just
-  // relying on step 1) in case it was revoked in between, and signs back out
-  // on any failure so a rejected claim doesn't leave a half-authorized session.
-  Future<AdminAccount> completeAdminClaim({
-    required String email,
-    required String emailLink,
-    required String password,
-  }) async {
-    final lower = email.trim().toLowerCase();
-    final credential = await _auth.signInWithEmailLink(
-      email: lower,
-      emailLink: emailLink,
-    );
-    final user = credential.user!;
-
-    try {
-      final ref = _firestore.collection('admins').doc(lower);
-      final snapshot = await ref.get();
-      if (!snapshot.exists) {
-        throw StateError(
-          'This email has not been invited. Ask an owner to invite you first.',
-        );
-      }
-      final account = AdminAccount.fromSnapshot(snapshot);
-      if (!account.active) {
-        throw StateError('This admin invite has been deactivated.');
-      }
-
-      await user.updatePassword(password);
-      await ref.update({
-        'uid': user.uid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      return account.copyWith(uid: user.uid);
-    } catch (_) {
-      await _auth.signOut();
-      rethrow;
-    }
-  }
-
   // ---- Owner transfer (exactly one owner may exist at a time) ---------------
   //
   // Promoting someone to owner is sensitive and hard to reverse, so it is
@@ -420,12 +335,6 @@ class AdminRepository {
     );
   }
 
-  // Sends Firebase's built-in password reset email for admin accounts.
-  // Student accounts in this prototype use generated passwords, so admins reset them manually.
-  Future<void> sendAdminPasswordReset(String email) {
-    return _auth.sendPasswordResetEmail(email: email);
-  }
-
   Future<void> signOut() => _auth.signOut();
 
   // Creates a group document. Students are stored inside the group for now
@@ -447,178 +356,6 @@ class AdminRepository {
       description: 'Created group "$name"',
     );
     return ref.id;
-  }
-
-  // Adds a student to a group and generates a simple Student ID/password.
-  // Later, this can be upgraded to real Firebase Auth student accounts.
-  Future<StudentAccount> registerStudent(StudentDraft draft) async {
-    final groupRef = _firestore.collection('groups').doc(draft.groupId);
-    final counterRef = _firestore.collection('metadata').doc('studentCounter');
-
-    var groupName = '';
-    final student = await _firestore.runTransaction((transaction) async {
-      final groupSnapshot = await transaction.get(groupRef);
-      if (!groupSnapshot.exists) {
-        throw StateError('The selected group no longer exists.');
-      }
-
-      final group = CapstoneGroup.fromSnapshot(groupSnapshot);
-      groupName = group.name;
-      if (group.students.length >= 5) {
-        throw StateError('This group already has 5 members.');
-      }
-
-      final counterSnapshot = await transaction.get(counterRef);
-      final currentNumber = counterSnapshot.data()?['nextNumber'] as int? ?? 1;
-      final studentId = 'STU${currentNumber.toString().padLeft(3, '0')}';
-      final password = _generatePassword(currentNumber);
-      final student = StudentAccount(
-        id: groupRef.collection('students').doc().id,
-        name: draft.name,
-        email: draft.email,
-        studentId: studentId,
-        password: password,
-        tempPassword: password,
-        // Fresh accounts start on a temp password and must set their own.
-        mustChangePassword: true,
-      );
-
-      transaction.set(counterRef, {
-        'nextNumber': currentNumber + 1,
-      }, SetOptions(merge: true));
-      transaction.update(groupRef, {
-        'students': FieldValue.arrayUnion([student.toMap()]),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      return student;
-    });
-
-    await _recordAudit(
-      action: 'student.register',
-      description:
-          'Registered ${student.name} (${student.studentId}) in $groupName',
-    );
-    return student;
-  }
-
-  Future<void> deleteStudent({
-    required CapstoneGroup group,
-    required StudentAccount student,
-  }) async {
-    await _firestore.collection('groups').doc(group.id).update({
-      'students': FieldValue.arrayRemove([student.toMap()]),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    await _recordAudit(
-      action: 'student.delete',
-      description:
-          'Deleted ${student.name} (${student.studentId}) from ${group.name}',
-    );
-  }
-
-  // Admin reset: generate a new temporary password for one student. This makes
-  // the temp password the current login again, forces the student to change it
-  // on next login, and clears any pending "forgot password" request.
-  Future<String> resetStudentPassword({
-    required CapstoneGroup group,
-    required StudentAccount student,
-  }) async {
-    final newPassword = _generatePassword(
-      DateTime.now().millisecondsSinceEpoch,
-    );
-    await _updateStudentInGroup(
-      groupId: group.id,
-      studentId: student.id,
-      transform: (current) => current.copyWith(
-        password: newPassword,
-        tempPassword: newPassword,
-        mustChangePassword: true,
-        resetRequested: false,
-      ),
-    );
-    await _recordAudit(
-      action: 'student.resetPassword',
-      description: 'Reset password for ${student.name} (${student.studentId})',
-    );
-    return newPassword;
-  }
-
-  // Student change password: verify the old password, then save the new one.
-  // The new password is stored only in [password] (never in [tempPassword]),
-  // so it is never revealed on the admin dashboard.
-  Future<void> changeStudentPassword({
-    required String groupId,
-    required String studentId,
-    required String currentPassword,
-    required String newPassword,
-  }) async {
-    _validateNewPassword(newPassword);
-    await _updateStudentInGroup(
-      groupId: groupId,
-      studentId: studentId,
-      transform: (current) {
-        if (current.password != currentPassword) {
-          throw StateError('Current password is incorrect.');
-        }
-        return current.copyWith(
-          password: newPassword,
-          mustChangePassword: false,
-        );
-      },
-    );
-  }
-
-  // Used by the forced prompt after a student logs in with a temp password.
-  // No current-password check is needed because the student just authenticated
-  // with it; we only clear the "must change" flag and store the new password.
-  Future<void> completeTempPasswordChange({
-    required String groupId,
-    required String studentId,
-    required String newPassword,
-  }) async {
-    _validateNewPassword(newPassword);
-    await _updateStudentInGroup(
-      groupId: groupId,
-      studentId: studentId,
-      transform: (current) => current.copyWith(
-        password: newPassword,
-        mustChangePassword: false,
-      ),
-    );
-  }
-
-  // Student-facing "forgot password": flags the account so the admin sees a
-  // reset request (an icon on the student's row). Returns the student's name
-  // when a match is found, or null when nothing matched.
-  Future<String?> requestPasswordReset(String usernameOrEmail) async {
-    final normalized = usernameOrEmail.trim().toLowerCase();
-    if (normalized.isEmpty) return null;
-
-    final snapshot = await _firestore.collection('groups').get();
-    for (final groupDoc in snapshot.docs) {
-      final group = CapstoneGroup.fromSnapshot(groupDoc);
-      for (final student in group.students) {
-        final matches =
-            student.email.toLowerCase() == normalized ||
-            student.studentId.toLowerCase() == normalized;
-        if (matches) {
-          await _updateStudentInGroup(
-            groupId: group.id,
-            studentId: student.id,
-            transform: (current) => current.copyWith(resetRequested: true),
-          );
-          return student.name;
-        }
-      }
-    }
-    return null;
-  }
-
-  void _validateNewPassword(String newPassword) {
-    if (newPassword.length < 6) {
-      throw StateError('New password must be at least 6 characters.');
-    }
   }
 
   // Shared transaction helper: reads the group, applies [transform] to the one
@@ -764,6 +501,15 @@ class AdminRepository {
         'students': updatedTo,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      // Keep the login lookup pointing at the student's new group, or they
+      // couldn't be found (and couldn't log in) after the move.
+      if (student.uid.isNotEmpty) {
+        transaction.set(
+          _firestore.collection('studentIndex').doc(student.uid),
+          {'groupId': newGroupId},
+          SetOptions(merge: true),
+        );
+      }
     });
 
     await _recordAudit(
@@ -772,29 +518,6 @@ class AdminRepository {
           'Moved ${student.name} from ${fromGroup.name} to $toGroupName'
           '${trimmedName == student.name ? '' : ' (renamed to "$trimmedName")'}',
     );
-  }
-
-  // Student login checks the generated credentials stored inside groups.
-  // This is simple for the prototype; secure production auth should use Auth.
-  Future<StudentLoginResult?> signInStudent({
-    required String usernameOrEmail,
-    required String password,
-  }) async {
-    final normalizedLogin = usernameOrEmail.trim().toLowerCase();
-    final snapshot = await _firestore.collection('groups').get();
-
-    for (final groupDoc in snapshot.docs) {
-      final group = CapstoneGroup.fromSnapshot(groupDoc);
-      for (final student in group.students) {
-        final emailMatches = student.email.toLowerCase() == normalizedLogin;
-        final idMatches = student.studentId.toLowerCase() == normalizedLogin;
-        if ((emailMatches || idMatches) && student.password == password) {
-          return StudentLoginResult(group: group, student: student);
-        }
-      }
-    }
-
-    return null;
   }
 
   // ---- Firebase Auth student login helpers ----------------------------------
@@ -834,15 +557,6 @@ class AdminRepository {
     return null;
   }
 
-  String _generatePassword(int seed) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    final random = Random(DateTime.now().microsecondsSinceEpoch + seed);
-    final code = List.generate(
-      6,
-      (_) => chars[random.nextInt(chars.length)],
-    ).join();
-    return 'temp$code';
-  }
 }
 
 // Admin roles. `owner` can manage other admins (invite / deactivate /
@@ -1046,7 +760,9 @@ class StudentAccount {
       'name': name,
       'email': email,
       'studentId': studentId,
-      'password': password,
+      // Real passwords live in Firebase Auth, never Firestore. Only the
+      // shareable temp password (cleared once the student sets their own) and
+      // the uid are stored here.
       'tempPassword': tempPassword,
       'mustChangePassword': mustChangePassword,
       'resetRequested': resetRequested,

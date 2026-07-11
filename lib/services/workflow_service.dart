@@ -95,7 +95,7 @@ $paperText
 
     final response = await http.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: await naraRouterHeaders(),
       body: jsonEncode({
         'model': _model,
         'messages': [

@@ -257,9 +257,8 @@ class _LoginPageState extends State<LoginPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Students: enter your Student ID or email to send a reset request '
-              'to your admin. They will generate a new temporary password for '
-              'you.\n\nAdmins: enter your email to receive a Firebase reset link.',
+              'Enter your Student ID or email and we will send a link to set a '
+              'new password. Students can also ask their admin to reset it.',
             ),
             const SizedBox(height: 12),
             TextField(
@@ -289,23 +288,9 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
     try {
-      // First treat it as a student (matches Student ID or student email) and
-      // notify the admin. This handles student emails too, which also contain
-      // '@', so we can't decide by the '@' sign alone.
-      final studentName = await _repo.requestPasswordReset(value);
-      if (!mounted) return;
-      if (studentName != null) {
-        _showMessage(
-          'Reset request sent for $studentName. Your admin will give you a '
-          'new temporary password.',
-        );
-        return;
-      }
-
-      // Otherwise send a self-serve reset link via Brevo (through our Cloud
-      // Function). Works for admins now, and for students once they are on
-      // Firebase Auth. Kept generic so it never reveals whether an account
-      // exists.
+      // Self-serve reset for students and admins: emails a reset link via Brevo
+      // through our Cloud Function. Kept generic so it never reveals whether an
+      // account exists.
       await FunctionsService().sendPasswordResetEmail(value);
       if (!mounted) return;
       _showMessage('If an account matches that, a reset link has been emailed.');

@@ -63,11 +63,13 @@ service cloud.firestore {
     }
 
     // --- Capstone groups (with embedded student records) -------------------
-    // Open read + update so client-side student login and password changes
-    // keep working; only whole-group create/delete is admin-only.
+    // Students and admins are now Firebase Auth accounts, so reads require a
+    // login (this is what finally closes the old world-readable exposure).
+    // Only admins may write groups; student password changes go through Cloud
+    // Functions (Admin SDK), which bypass these rules.
     match /groups/{groupId} {
-      allow read, update: if true;
-      allow create, delete: if isActiveAdmin();
+      allow read: if request.auth != null;
+      allow write: if isActiveAdmin();
     }
 
     // --- Student ID counter: only touched during admin registration --------
@@ -76,12 +78,11 @@ service cloud.firestore {
     }
 
     // --- Defense practice history -------------------------------------------
-    // Students are not Firebase Auth accounts (see note on `groups` above), so
-    // creating and reading practice session records has to stay open, same as
-    // group reads/updates. Records are append-only from the app; only admins
-    // can clean them up.
+    // Students are Firebase Auth accounts now, so reading/creating their own
+    // practice records requires a login. Records are append-only from the app;
+    // only admins can clean them up.
     match /practice_sessions/{sessionId} {
-      allow read, create: if true;
+      allow read, create: if request.auth != null;
       allow update, delete: if isActiveAdmin();
     }
 
@@ -109,7 +110,9 @@ service cloud.firestore {
     }
     match /studentIndex/{uid} {
       allow read: if request.auth != null;
-      allow write: if false;
+      // Admins update this when moving a student between groups. Cloud Functions
+      // (Admin SDK) bypass these rules for the create/delete cases.
+      allow write: if isActiveAdmin();
     }
 
     // Anything not matched above is denied by default.
