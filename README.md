@@ -1,3 +1,1 @@
-# appstone
-
-A new Flutter project.
+Appstone
