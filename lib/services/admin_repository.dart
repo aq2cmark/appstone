@@ -60,9 +60,11 @@ class AdminRepository {
   // admin instant and lets owners manage who has access from inside the app.
 
   // Called right after a successful Firebase Auth sign-in. Returns the caller's
-  // admin account, or throws when they are not authorized. If the collection is
-  // completely empty, the first person to sign in is bootstrapped as the owner
-  // so the portal stays usable the first time this ships.
+  // admin account, or throws when they are not authorized. There is NO
+  // auto-bootstrap: the very first owner must be created directly in the
+  // Firestore console. (Auto-creating an owner when the collection is empty
+  // would let any signed-in user - including a student - become owner if the
+  // admins list were ever wiped.)
   Future<AdminAccount> resolveAdminAccess({
     required String email,
     required String uid,
@@ -86,27 +88,6 @@ class AdminRepository {
         });
       }
       return account.copyWith(uid: uid);
-    }
-
-    final anyAdmin = await _firestore.collection('admins').limit(1).get();
-    if (anyAdmin.docs.isEmpty) {
-      final name = lower.split('@').first;
-      await ref.set({
-        'email': lower,
-        'name': name,
-        'role': AdminRole.owner.name,
-        'active': true,
-        'uid': uid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      return AdminAccount(
-        email: lower,
-        name: name,
-        role: AdminRole.owner,
-        active: true,
-        uid: uid,
-      );
     }
 
     throw StateError('This account is not authorized to use the admin portal.');

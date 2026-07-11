@@ -53,12 +53,19 @@ class DefenseScore {
 class DefenseAiService {
   static const _model = 'mistral-large';
 
+  // One id for this whole practice session (this service is created once per
+  // session), so all of its AI calls count as a SINGLE session against the cap.
+  final String _sessionId = newAiSessionId();
+
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
     final uri = Uri.parse(naraRouterEndpoint);
 
     final response = await http.post(
       uri,
-      headers: await naraRouterHeaders(),
+      headers: await naraRouterHeaders(
+        feature: AiFeature.defensePractice,
+        sessionId: _sessionId,
+      ),
       body: jsonEncode({
         'model': _model,
         'messages': [
@@ -69,9 +76,7 @@ class DefenseAiService {
     );
 
     if (response.statusCode == 429) {
-      throw StateError(
-        'The AI has hit its request limit for now. Please wait a bit and try again.',
-      );
+      throw StateError(aiRateLimitMessage(response.body));
     }
     if (response.statusCode != 200) {
       throw StateError(

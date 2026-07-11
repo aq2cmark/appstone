@@ -6,7 +6,14 @@ import 'package:appstone/services/admin_repository.dart';
 import 'package:appstone/services/functions_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Prefs keys for the "remember me" convenience: whether to remember, and the
+// last username/email typed. The PASSWORD is never stored here - the browser's
+// own password manager handles that securely via autofill.
+const _rememberMeKey = 'loginRememberMe';
+const _rememberedUserKey = 'loginRememberedUser';
 
 // Shared login screen for both admins and students.
 // Admins use Firebase Auth email/password.
@@ -28,7 +35,11 @@ class _LoginPageState extends State<LoginPage> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  // Separate from _isLoading so sending a reset link doesn't make the Sign In
+  // button read "Signing in...".
+  bool _sendingReset = false;
   bool _hidePassword = true;
+  bool _rememberMe = true;
 
   @override
   void initState() {
@@ -37,6 +48,20 @@ class _LoginPageState extends State<LoginPage> {
     if (error != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showMessage(error));
     }
+    _loadRemembered();
+  }
+
+  Future<void> _loadRemembered() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remember = prefs.getBool(_rememberMeKey) ?? true;
+    final savedUser = prefs.getString(_rememberedUserKey);
+    if (!mounted) return;
+    setState(() {
+      _rememberMe = remember;
+      if (remember && savedUser != null && savedUser.isNotEmpty) {
+        _usernameController.text = savedUser;
+      }
+    });
   }
 
   @override
@@ -56,7 +81,8 @@ class _LoginPageState extends State<LoginPage> {
             constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Column(
+              child: AutofillGroup(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -94,6 +120,10 @@ class _LoginPageState extends State<LoginPage> {
                   TextField(
                     controller: _usernameController,
                     keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [
+                      AutofillHints.username,
+                      AutofillHints.email,
+                    ],
                     decoration: const InputDecoration(
                       hintText: 'Enter your username or email',
                       border: OutlineInputBorder(),
@@ -114,6 +144,10 @@ class _LoginPageState extends State<LoginPage> {
                   TextField(
                     controller: _passwordController,
                     obscureText: _hidePassword,
+                    autofillHints: const [AutofillHints.password],
+                    onSubmitted: (_) {
+                      if (!_isLoading) _signIn();
+                    },
                     decoration: InputDecoration(
                       hintText: 'Enter your password',
                       border: const OutlineInputBorder(),
@@ -129,7 +163,18 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _rememberMe,
+                        onChanged: (v) =>
+                            setState(() => _rememberMe = v ?? true),
+                      ),
+                      const Expanded(child: Text('Remember me')),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     height: 60,
@@ -153,11 +198,16 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   TextButton(
-                    onPressed: _isLoading ? null : _showForgotPasswordDialog,
-                    child: const Text('Forgot password?'),
+                    onPressed: (_isLoading || _sendingReset)
+                        ? null
+                        : _showForgotPasswordDialog,
+                    child: Text(
+                      _sendingReset ? 'Sending link…' : 'Forgot password?',
+                    ),
                   ),
                   const SizedBox(height: 12),
                 ],
+                ),
               ),
             ),
           ),
@@ -200,6 +250,9 @@ class _LoginPageState extends State<LoginPage> {
         _showMessage('Invalid Student ID/email or password.');
         return;
       }
+
+      // Remember the username + let the browser offer to save the password.
+      await _rememberLogin(identifier);
 
       // Admin? An active `admins` record routes to the portal.
       try {
@@ -286,7 +339,7 @@ class _LoginPageState extends State<LoginPage> {
     controller.dispose();
     if (value == null || value.isEmpty) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _sendingReset = true);
     try {
       // Self-serve reset for students and admins: emails a reset link via Brevo
       // through our Cloud Function. Kept generic so it never reveals whether an
@@ -299,8 +352,21 @@ class _LoginPageState extends State<LoginPage> {
         _showMessage('Could not send the request. Please try again.');
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _sendingReset = false);
     }
+  }
+
+  // Saves the username (never the password) for next time, and asks the browser
+  // to save the just-used password through its own password manager.
+  Future<void> _rememberLogin(String identifier) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_rememberMeKey, _rememberMe);
+    if (_rememberMe) {
+      await prefs.setString(_rememberedUserKey, identifier);
+    } else {
+      await prefs.remove(_rememberedUserKey);
+    }
+    TextInput.finishAutofillContext();
   }
 
   void _goTo(Widget page) {

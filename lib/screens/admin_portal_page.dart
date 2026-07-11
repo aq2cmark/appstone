@@ -12,6 +12,7 @@ import 'admin_management_page.dart';
 import 'audit_log_page.dart';
 import 'import_students_page.dart';
 import 'login_page.dart';
+import 'print_options_dialog.dart';
 
 // AdminPortalPage is the main admin area.
 // It listens to Firestore groups in real time, then shows the group dashboard,
@@ -527,10 +528,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                               ),
                               DataCell(Text(student.email)),
                               DataCell(Text(student.studentId)),
-                              // Only the admin-generated temp password is shown.
-                              // If a student changed their own password it is
-                              // never surfaced here - only in [password].
-                              DataCell(SelectableText(student.tempPassword)),
+                              // Shows the temp password until the student sets
+                              // their own; after that it reads "Password
+                              // changed" (their real password lives in Firebase
+                              // Auth and can never be shown here).
+                              DataCell(
+                                student.tempPassword.isEmpty
+                                    ? const Text(
+                                        'Password changed',
+                                        style: TextStyle(
+                                          color: AppColors.textGrey,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      )
+                                    : SelectableText(student.tempPassword),
+                              ),
                               DataCell(
                                 student.mustChangePassword
                                     ? statusChip(
@@ -610,8 +622,19 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> _printCredentials(List<CapstoneGroup> groups) async {
+    if (groups.every((g) => g.students.isEmpty)) {
+      showMessage('No students to print yet.');
+      return;
+    }
+    // Let the admin pick which groups/students (and optionally only those who
+    // still have a temp password) before printing.
+    final selection = await showDialog<List<CapstoneGroup>>(
+      context: context,
+      builder: (_) => PrintOptionsDialog(groups: groups),
+    );
+    if (selection == null || selection.isEmpty) return;
     try {
-      await CredentialsPrinter.printRoster(groups);
+      await CredentialsPrinter.printRoster(selection);
     } catch (error) {
       showMessage('Could not open the print view: $error');
     }

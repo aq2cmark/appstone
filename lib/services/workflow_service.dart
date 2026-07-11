@@ -95,7 +95,10 @@ $paperText
 
     final response = await http.post(
       uri,
-      headers: await naraRouterHeaders(),
+      headers: await naraRouterHeaders(
+        feature: AiFeature.aiWorkflow,
+        sessionId: newAiSessionId(),
+      ),
       body: jsonEncode({
         'model': _model,
         'messages': [
@@ -106,10 +109,7 @@ $paperText
     );
 
     if (response.statusCode == 429) {
-      throw StateError(
-        'The AI has hit its request limit for now. Please wait a bit and try '
-        'again.',
-      );
+      throw StateError(aiRateLimitMessage(response.body));
     }
     if (response.statusCode != 200) {
       throw StateError(

@@ -31,6 +31,12 @@ admin.initializeApp();
 
 const REGION = 'us-central1';
 
+// Max AI sessions per user PER FEATURE per calendar day (UTC). Each module
+// (title generator, paper checker, AI workflow, defense practice) gets its own
+// allowance of this many. One session = one use; a whole defense-practice run
+// (many calls) counts as a single session via a shared X-AI-Session id.
+const DAILY_AI_LIMIT = 5;
+
 // Secrets (set once, never committed):
 //   firebase functions:secrets:set NARAROUTER_API_KEY
 //   firebase functions:secrets:set BREVO_API_KEY
@@ -144,12 +150,52 @@ exports.nararouter = onRequest(
       res.status(401).json({ error: { message: 'Sign in required to use AI features.' } });
       return;
     }
+    let uid;
     try {
-      await admin.auth().verifyIdToken(token);
+      uid = (await admin.auth().verifyIdToken(token)).uid;
     } catch (_) {
       res.status(401).json({ error: { message: 'Your session expired. Sign in again.' } });
       return;
     }
+
+    // Per-user, PER-FEATURE daily session limit. Sessions are tracked in a
+    // per-user doc bucketed by feature; each feature gets its own DAILY_AI_LIMIT
+    // allowance. Each distinct X-AI-Session id counts once, so a defense run
+    // (many calls, one id) is a single session, and calls with an already-
+    // counted id always pass (so an in-progress run finishes). Resets each UTC
+    // day. The Admin SDK write bypasses rules, so no client can tamper with it.
+    const feature =
+      String(req.headers['x-ai-feature'] || 'other').slice(0, 40) || 'other';
+    const sessionId =
+      String(req.headers['x-ai-session'] || '').slice(0, 80) ||
+      `call-${Date.now()}-${Math.random()}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const usageRef = db().collection('aiUsage').doc(uid);
+    const allowed = await db().runTransaction(async (tx) => {
+      const snap = await tx.get(usageRef);
+      const data = snap.data() || {};
+      const features = data.date === today ? data.features || {} : {};
+      const sessions = features[feature] || [];
+      if (sessions.includes(sessionId)) return true; // part of an ongoing session
+      if (sessions.length >= DAILY_AI_LIMIT) return false; // this feature's cap hit
+      sessions.push(sessionId);
+      features[feature] = sessions;
+      tx.set(usageRef, {
+        date: today,
+        features,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return true;
+    });
+    if (!allowed) {
+      res.status(429).json({
+        error: {
+          message: `You've reached today's limit for this feature (${DAILY_AI_LIMIT} per day). Please try again tomorrow.`,
+        },
+      });
+      return;
+    }
+
     try {
       const upstream = await fetch(
         'https://router.bynara.id/v1/chat/completions',
@@ -275,6 +321,14 @@ exports.resetStudentPassword = onCall(
       throw new HttpsError('invalid-argument', 'uid and groupId are required.');
     }
 
+    // Only ever act on a real STUDENT uid. Students have a studentIndex entry;
+    // admins/owners do not - so this stops one admin from resetting another
+    // admin's (or the owner's) password by passing their uid.
+    const idxSnap = await db().collection('studentIndex').doc(uid).get();
+    if (!idxSnap.exists) {
+      throw new HttpsError('failed-precondition', 'That is not a student account.');
+    }
+
     const tempPassword = genTempPassword();
     try {
       await admin.auth().updateUser(uid, { password: tempPassword });
@@ -309,6 +363,13 @@ exports.deleteStudent = onCall(
     const studentId = String(request.data?.studentId || '').trim();
     if (!uid || !groupId) {
       throw new HttpsError('invalid-argument', 'uid and groupId are required.');
+    }
+
+    // Guard: only delete a real STUDENT (has a studentIndex entry) - never an
+    // admin/owner account passed by uid.
+    const idxSnap = await db().collection('studentIndex').doc(uid).get();
+    if (!idxSnap.exists) {
+      throw new HttpsError('failed-precondition', 'That is not a student account.');
     }
 
     await admin.auth().deleteUser(uid).catch(() => {}); // ignore if already gone
@@ -512,55 +573,5 @@ exports.finishStudentPasswordChange = onCall(
       tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });
     });
     return { ok: true };
-  },
-);
-
-// ---- Final cleanup ---------------------------------------------------------
-
-// Owner-only, run once after the Auth cutover is confirmed working. Strips the
-// leftover plaintext `password` field from every student record (the real
-// password lives in Auth now), and clears any stale temp password from students
-// who have already set their own. Safe to run more than once.
-exports.cleanupStudentSecrets = onCall(
-  { region: REGION, maxInstances: 3, timeoutSeconds: 300 },
-  async (request) => {
-    const actor = await assertAuthedAdmin(request, { ownerOnly: true });
-
-    const groupsSnap = await db().collection('groups').get();
-    let cleaned = 0;
-
-    for (const groupDoc of groupsSnap.docs) {
-      const students = groupDoc.data().students || [];
-      let changed = false;
-
-      const updated = students.map((s) => {
-        const next = { ...s };
-        let touched = false;
-        if ('password' in next) {
-          delete next.password;
-          touched = true;
-        }
-        // A temp password only applies until the student sets their own.
-        if (next.mustChangePassword === false && next.tempPassword) {
-          next.tempPassword = '';
-          touched = true;
-        }
-        if (touched) {
-          cleaned++;
-          changed = true;
-        }
-        return next;
-      });
-
-      if (changed) {
-        await groupDoc.ref.update({
-          students: updated,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      }
-    }
-
-    await writeAudit(actor, 'students.cleanup', `Stripped stored secrets from ${cleaned} student records`);
-    return { cleaned };
   },
 );

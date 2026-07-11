@@ -69,11 +69,6 @@ class FunctionsService {
     return _call('finishStudentPasswordChange', {'groupId': groupId});
   }
 
-  // Owner-only, run once after the Auth cutover works: strip leftover plaintext
-  // passwords + stale temp passwords from Firestore. Returns { cleaned }.
-  Future<Map<String, dynamic>> cleanupStudentSecrets() {
-    return _call('cleanupStudentSecrets', {});
-  }
 
   // Owner-only: request an ownership transfer. Emails the owner a confirmation
   // link via Brevo. [appOrigin] is where the link should land (the app URL).

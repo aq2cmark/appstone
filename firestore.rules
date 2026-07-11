@@ -41,13 +41,20 @@ service cloud.firestore {
       return isActiveAdmin() && get(adminPath()).data.role == 'owner';
     }
 
+    // True when the signed-in user is the student that owns [groupId], resolved
+    // via their studentIndex entry. Lets a student read only their own group.
+    function isOwnGroup(groupId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/studentIndex/$(request.auth.uid))
+        && get(/databases/$(database)/documents/studentIndex/$(request.auth.uid)).data.groupId == groupId;
+    }
+
     // --- Admin roster: who can access the portal ---------------------------
     match /admins/{adminEmail} {
-      // A single doc can be read unauthenticated so the sign-up screen can
-      // check "has this email been invited?" before the account exists.
-      allow get: if true;
-      // Listing the whole roster (management page) requires a signed-in admin.
-      allow list: if request.auth != null;
+      // Reading an admin record requires a login (the old unauthenticated
+      // sign-up check is gone). This stops anyone from pulling an admin's role,
+      // uid, or pending-transfer target without being signed in.
+      allow get, list: if request.auth != null;
 
       // Only owners create or remove admin records.
       allow create, delete: if isOwner();
@@ -63,12 +70,12 @@ service cloud.firestore {
     }
 
     // --- Capstone groups (with embedded student records) -------------------
-    // Students and admins are now Firebase Auth accounts, so reads require a
-    // login (this is what finally closes the old world-readable exposure).
-    // Only admins may write groups; student password changes go through Cloud
-    // Functions (Admin SDK), which bypass these rules.
+    // Admins may read/write any group. A student may read ONLY their own group
+    // (so they can't harvest other students' emails / un-changed temp passwords
+    // from other groups). Student password changes go through Cloud Functions
+    // (Admin SDK), which bypass these rules.
     match /groups/{groupId} {
-      allow read: if request.auth != null;
+      allow read: if isActiveAdmin() || isOwnGroup(groupId);
       allow write: if isActiveAdmin();
     }
 
@@ -109,7 +116,9 @@ service cloud.firestore {
       allow list, write: if false;
     }
     match /studentIndex/{uid} {
-      allow read: if request.auth != null;
+      // A student may read only their own entry; admins may read any (to move a
+      // student). Prevents any logged-in user enumerating every student.
+      allow read: if isActiveAdmin() || (request.auth != null && request.auth.uid == uid);
       // Admins update this when moving a student between groups. Cloud Functions
       // (Admin SDK) bypass these rules for the create/delete cases.
       allow write: if isActiveAdmin();
