@@ -3,7 +3,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../app_colors.dart';
 import '../services/docx_layout_checker.dart';
-import '../services/document_text_extractor.dart';
+import '../services/paper_check_controller.dart';
 import '../services/paper_checker_service.dart';
 
 // Paper Checker: uploads a capstone manuscript, extracts its text, and grades
@@ -18,18 +18,13 @@ class PaperCheckerScreen extends StatefulWidget {
 }
 
 class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
-  final _extractor = DocumentTextExtractor();
-  final _service = PaperCheckerService();
-  final _layoutChecker = DocxLayoutChecker();
+  // The check runs in this shared controller (not local state), so it keeps
+  // going when the user leaves this screen and the result is still here when
+  // they return.
+  final _controller = PaperCheckController.instance;
 
+  // The file the user has picked but not yet checked (screen-local).
   PlatformFile? _selectedFile;
-  bool _checking = false;
-  String? _error;
-  PaperReview? _review;
-  LayoutReport? _layout;
-  // True after a check ran on a non-.docx file, so we can explain why the
-  // layout section is missing.
-  bool _layoutSkipped = false;
 
   @override
   Widget build(BuildContext context) {
@@ -40,82 +35,91 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         foregroundColor: Colors.white,
         title: const Text('Paper Checker'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Upload your capstone manuscript. It is graded against the '
-                    'Capstone Manual manuscript rubric (50 pts), with the exact '
-                    'issues to fix in each chapter.',
-                    style: TextStyle(fontSize: 15),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildUploadCard(),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: _checking ? null : _runCheck,
-                    icon: _checking
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.fact_check),
-                    label: Text(_checking ? 'Checking...' : 'Check Paper'),
-                  ),
-                  if (_checking) ...[
-                    const SizedBox(height: 20),
-                    _buildLoadingCard(),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    _buildErrorCard(_error!),
-                  ],
-                  if (_review != null) ...[
-                    const SizedBox(height: 20),
-                    _buildScoreCard(_review!),
-                  ],
-                  if (_layout != null) ...[
-                    const SizedBox(height: 16),
-                    _buildLayoutCard(_layout!),
-                  ] else if (_layoutSkipped) ...[
-                    const SizedBox(height: 16),
-                    _buildLayoutNote(),
-                  ],
-                  if (_review != null) ...[
-                    const SizedBox(height: 16),
-                    for (final section in _review!.sections)
-                      _buildSectionCard(section),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'This is an AI pre-check to help you improve the paper. '
-                      'It is not the official panel grade, which also weighs the '
-                      'software and oral defense.',
-                      style: TextStyle(
-                        color: AppColors.textGrey,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
+      body: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final running = _controller.running;
+          final review = _controller.review;
+          final layout = _controller.layout;
+          final error = _controller.error;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Upload your capstone manuscript. It is graded against '
+                        'the Capstone Manual manuscript rubric (50 pts), with the '
+                        'exact issues to fix in each chapter.',
+                        style: TextStyle(fontSize: 15),
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(height: 16),
+                      _buildUploadCard(),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: running ? null : _runCheck,
+                        icon: running
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.fact_check),
+                        label: Text(running ? 'Checking...' : 'Check Paper'),
+                      ),
+                      if (running) ...[
+                        const SizedBox(height: 20),
+                        _buildLoadingCard(),
+                      ],
+                      if (error != null) ...[
+                        const SizedBox(height: 16),
+                        _buildErrorCard(error),
+                      ],
+                      if (review != null) ...[
+                        const SizedBox(height: 20),
+                        _buildScoreCard(review),
+                      ],
+                      if (layout != null) ...[
+                        const SizedBox(height: 16),
+                        _buildLayoutCard(layout),
+                      ] else if (_controller.layoutSkipped) ...[
+                        const SizedBox(height: 16),
+                        _buildLayoutNote(),
+                      ],
+                      if (review != null) ...[
+                        const SizedBox(height: 16),
+                        for (final section in review.sections)
+                          _buildSectionCard(section),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'This is an AI pre-check to help you improve the '
+                          'paper. It is not the official panel grade, which also '
+                          'weighs the software and oral defense.',
+                          style: TextStyle(
+                            color: AppColors.textGrey,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -131,20 +135,24 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
             const Icon(Icons.upload_file, color: AppColors.primary, size: 56),
             const SizedBox(height: 12),
             Text(
-              _selectedFile?.name ?? 'Tap to select document',
+              _selectedFile?.name ??
+                  _controller.fileName ??
+                  'Tap to select document',
               textAlign: TextAlign.center,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              _selectedFile == null
-                  ? 'PDF, DOCX, or TXT'
-                  : _fileSizeText(_selectedFile!.size),
+              _selectedFile != null
+                  ? _fileSizeText(_selectedFile!.size)
+                  : (_controller.fileName != null
+                        ? (_controller.running ? 'Checking…' : 'Last checked')
+                        : 'PDF, DOCX, or TXT'),
               style: const TextStyle(color: AppColors.textGrey),
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: _checking ? null : _pickPaper,
+              onPressed: _controller.running ? null : _pickPaper,
               icon: const Icon(Icons.folder_open),
               label: const Text('Select File'),
             ),
@@ -487,13 +495,8 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
-    setState(() {
-      _selectedFile = result.files.single;
-      _review = null;
-      _layout = null;
-      _layoutSkipped = false;
-      _error = null;
-    });
+    _controller.reset(); // clear any previous result for the newly picked file
+    setState(() => _selectedFile = result.files.single);
   }
 
   Future<void> _runCheck() async {
@@ -504,48 +507,9 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       );
       return;
     }
-
-    setState(() {
-      _checking = true;
-      _error = null;
-      _review = null;
-      _layout = null;
-      _layoutSkipped = false;
-    });
-
-    try {
-      // Layout is a deterministic, .docx-only check (Section 10.3). Run it
-      // first and keep the result even if the AI content check later fails.
-      final bytes = file.bytes;
-      final isDocx = (file.extension ?? '').toLowerCase() == 'docx';
-      if (isDocx && bytes != null) {
-        try {
-          final layout = _layoutChecker.check(bytes);
-          if (!mounted) return;
-          setState(() => _layout = layout);
-        } catch (_) {
-          if (mounted) setState(() => _layoutSkipped = true);
-        }
-      } else {
-        if (mounted) setState(() => _layoutSkipped = true);
-      }
-
-      final text = await _extractor.extract(file);
-      final review = await _service.checkPaper(paperText: text);
-      if (!mounted) return;
-      setState(() => _review = review);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _checking = false);
-    }
-  }
-
-  String _friendlyError(Object error) {
-    if (error is DocumentExtractionException) return error.message;
-    if (error is StateError) return error.message;
-    return 'Something went wrong while checking the paper. Please try again.';
+    // Runs in the shared controller, so the check keeps going (and the result
+    // stays) even if the student leaves this screen and comes back.
+    _controller.start(file);
   }
 
   Color _scoreColor(double ratio) {

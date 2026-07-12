@@ -269,13 +269,23 @@ class _DefensePracticeSessionScreenState
   Widget build(BuildContext context) {
     final progress = totalAsked / widget.maxQuestions;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: Text(widget.title),
-      ),
+    return PopScope(
+      // Intercept back/exit so we can warn that leaving still uses a session.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final navigator = Navigator.of(context);
+        final leave = await _confirmLeave();
+        if (!mounted || !leave) return;
+        navigator.pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          title: Text(widget.title),
+        ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -375,7 +385,35 @@ class _DefensePracticeSessionScreenState
           ),
         ],
       ),
+        ),
     );
+  }
+
+  // Asks the student to confirm leaving mid-practice, warning that it still
+  // counts as one of their daily defense practice sessions.
+  Future<bool> _confirmLeave() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave practice?'),
+        content: const Text(
+          'Leaving ends this practice now. It still counts as one of your daily '
+          'defense practice sessions, and your progress will not be saved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Stay'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   // Countdown pill next to the question counter. Primary while there's
