@@ -90,6 +90,63 @@ $paperText
 ''';
   }
 
+  // Plain-language tips/help for one phase (chapter) of the plan, shown when the
+  // student taps a phase card. Shares the main AI Workflow daily bucket, so
+  // generating a plan and tapping chapters for tips draw from the same 5/day.
+  Future<String> getPhaseHelp({
+    required String phaseName,
+    String? note,
+    String? assessment,
+  }) async {
+    final prompt =
+        '''
+You are a capstone project adviser for a BS Information Technology student.
+Give practical, specific help for this phase of their capstone timeline.
+
+Phase: "$phaseName"
+${note != null && note.trim().isNotEmpty ? 'Planned focus: ${note.trim()}' : ''}
+${assessment != null && assessment.trim().isNotEmpty ? 'Overall paper status: ${assessment.trim()}' : ''}
+
+In plain language explain:
+- what this phase involves and why it matters,
+- 3 to 5 concrete, actionable tips to do it well,
+- one or two common mistakes to avoid.
+
+Keep it concise. Use short paragraphs or simple bullet points ("-"). Do NOT use
+markdown headers.
+''';
+
+    final response = await http.post(
+      Uri.parse(naraRouterEndpoint),
+      headers: await naraRouterHeaders(
+        feature: AiFeature.aiWorkflow,
+        sessionId: newAiSessionId(),
+      ),
+      body: jsonEncode({
+        'model': _model,
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+      }),
+    );
+
+    if (response.statusCode == 429) {
+      throw StateError(aiRateLimitMessage(response.body));
+    }
+    if (response.statusCode != 200) {
+      throw StateError(
+        'NaraRouter API error (${response.statusCode}): ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final text = data['choices']?[0]?['message']?['content'] as String?;
+    if (text == null || text.trim().isEmpty) {
+      throw StateError('The AI did not return any tips. Please try again.');
+    }
+    return text.trim();
+  }
+
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
     final uri = Uri.parse(naraRouterEndpoint);
 

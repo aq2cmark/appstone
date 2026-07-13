@@ -23,6 +23,8 @@ const naraRouterEndpoint = String.fromEnvironment(
 class AiFeature {
   static const titleGenerator = 'title-generator';
   static const paperChecker = 'paper-checker';
+  // Covers both generating the plan and the per-chapter "tap for tips" help -
+  // they share this one daily allowance.
   static const aiWorkflow = 'ai-workflow';
   static const defensePractice = 'defense-practice';
 }

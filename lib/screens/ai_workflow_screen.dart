@@ -440,32 +440,65 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
             ),
             const SizedBox(width: 4),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 10),
-                  Text(
-                    phase.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      decoration:
-                          phase.done ? TextDecoration.lineThrough : null,
-                      color: phase.done
-                          ? AppColors.textGrey
-                          : AppColors.textDark,
-                    ),
+              // Tapping the phase (not the checkbox) opens AI tips for it.
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _showPhaseHelp(plan, phase),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              phase.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                decoration: phase.done
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: phase.done
+                                    ? AppColors.textGrey
+                                    : AppColors.textDark,
+                              ),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.only(left: 6, top: 2),
+                            child: Icon(
+                              Icons.auto_awesome,
+                              size: 16,
+                              color: AppColors.gold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (phase.note.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          phase.note,
+                          style: const TextStyle(color: AppColors.textGrey),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      scheduleChip,
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Tap for AI tips on this phase',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  if (phase.note.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      phase.note,
-                      style: const TextStyle(color: AppColors.textGrey),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  scheduleChip,
-                ],
+                ),
               ),
             ),
           ],
@@ -473,6 +506,91 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       ),
     );
   }
+
+  // Opens a bottom sheet with AI-generated tips for the tapped phase/chapter.
+  Future<void> _showPhaseHelp(WorkflowPlan plan, WorkflowPhase phase) async {
+    // Kick off the AI request once, before showing the sheet, so it isn't
+    // re-fired on every rebuild of the sheet.
+    final helpFuture = _service.getPhaseHelp(
+      phaseName: phase.name,
+      note: phase.note,
+      assessment: plan.assessment,
+    );
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        builder: (context, scrollController) => FutureBuilder<String>(
+          future: helpFuture,
+          builder: (context, snapshot) {
+            final waiting = snapshot.connectionState == ConnectionState.waiting;
+            return ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.auto_awesome, color: AppColors.gold),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        phase.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'AI tips for this phase',
+                  style: TextStyle(color: AppColors.textGrey, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                if (waiting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 12),
+                          Text(
+                            'Getting tips…',
+                            style: TextStyle(color: AppColors.textGrey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (snapshot.hasError)
+                  Text(
+                    _helpError(snapshot.error!),
+                    style: const TextStyle(height: 1.4),
+                  )
+                else
+                  SelectableText(
+                    snapshot.data ?? '',
+                    style: const TextStyle(height: 1.5, fontSize: 14.5),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  String _helpError(Object error) =>
+      error is StateError ? error.message : 'Could not load tips. Try again.';
 
   Widget _chip({
     required IconData icon,
