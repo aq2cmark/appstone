@@ -53,15 +53,41 @@ Future<Map<String, String>> naraRouterHeaders({
   };
 }
 
-// Pulls the server's rate-limit message out of a 429 response body (e.g. the
-// per-feature daily-limit text), with a friendly fallback.
+// The proxy answers 429 for two very different reasons, told apart by
+// error.code:
+//   'daily-limit' - this feature's daily allowance is spent; come back tomorrow.
+//   'busy'        - NaraRouter's per-minute cap held even after the proxy waited
+//                   it out. Nothing is used up; trying again shortly works.
+const _dailyLimitFallback =
+    "You've reached today's AI limit for this feature. Try again tomorrow.";
+const _busyFallback =
+    'The AI service is busy right now. Please try again in a moment.';
+
+String? _errorCode(String responseBody) {
+  try {
+    final body = jsonDecode(responseBody) as Map<String, dynamic>;
+    return (body['error'] as Map?)?['code'] as String?;
+  } catch (_) {
+    return null;
+  }
+}
+
+// True when a 429 means "too many requests right this minute" rather than
+// "allowance spent" - i.e. the action is worth retrying, and cost the user
+// nothing.
+bool aiIsBusy(String responseBody) => _errorCode(responseBody) == 'busy';
+
+// Pulls the server's rate-limit message out of a 429 response body, falling back
+// to text matching whichever kind of limit it was.
 String aiRateLimitMessage(String responseBody) {
   try {
     final body = jsonDecode(responseBody) as Map<String, dynamic>;
-    final message = (body['error'] as Map?)?['message'] as String?;
+    final error = body['error'] as Map?;
+    final message = (error?['message'] as String?)?.trim();
     if (message != null && message.isNotEmpty) return message;
+    if (error?['code'] == 'busy') return _busyFallback;
   } catch (_) {
     // fall through to the default
   }
-  return "You've reached today's AI limit for this feature. Try again tomorrow.";
+  return _dailyLimitFallback;
 }

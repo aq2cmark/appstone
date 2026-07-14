@@ -39,8 +39,10 @@ const DAILY_AI_LIMIT = 5;
 
 // Secrets (set once, never committed):
 //   firebase functions:secrets:set NARAROUTER_API_KEY
+//   firebase functions:secrets:set GROQ_API_KEY
 //   firebase functions:secrets:set BREVO_API_KEY
 const NARAROUTER_API_KEY = defineSecret('NARAROUTER_API_KEY');
+const GROQ_API_KEY = defineSecret('GROQ_API_KEY');
 const BREVO_API_KEY = defineSecret('BREVO_API_KEY');
 
 // Non-secret config, set in functions/.env (BREVO_SENDER_EMAIL must be a sender
@@ -126,10 +128,116 @@ async function writeAudit(actor, action, description) {
 
 // ---- Phase 1: NaraRouter AI proxy ------------------------------------------
 
+// Where a feature's AI calls actually go. Both are OpenAI-compatible, so the
+// app's request body works against either without change.
+//
+// The title generator lives on Groq: its free tier allows 30 requests/minute
+// against NaraRouter's 10, and it's the lightest feature (one short prompt), so
+// moving it buys NaraRouter headroom for the heavier ones at no cost. Anything
+// not listed in FEATURE_UPSTREAM stays on NaraRouter.
+const UPSTREAMS = {
+  nararouter: {
+    url: 'https://router.bynara.id/v1/chat/completions',
+    apiKey: () => NARAROUTER_API_KEY.value(),
+  },
+  groq: {
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey: () => GROQ_API_KEY.value(),
+  },
+};
+
+const FEATURE_UPSTREAM = {
+  'title-generator': 'groq',
+};
+
+const upstreamFor = (feature) =>
+  UPSTREAMS[FEATURE_UPSTREAM[feature] || 'nararouter'];
+
+// Both providers cap requests per minute ACROSS the whole app (not per user) -
+// 10/min on NaraRouter, 30/min on Groq - so a handful of students acting in the
+// same minute can trip it. It's a rolling window though, so a burst clears in
+// seconds, which makes a 429 worth waiting out rather than surfacing as an error.
+//
+// The retry lives HERE rather than in the app on purpose: retrying server-side
+// reuses the same X-AI-Session id, so a rate-limited call never costs a student
+// one of their daily uses. A client-side retry would mint a fresh id and burn
+// another one off the DAILY_AI_LIMIT allowance.
+const RATE_LIMIT_BACKOFF_MS = [3000, 6000, 12000];
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// How long to wait before retrying a 429. Prefers upstream's Retry-After (given
+// either as seconds or an HTTP date) and otherwise falls back to our backoff
+// schedule. Jitter keeps simultaneous callers from retrying in lockstep and
+// re-colliding. Capped so the total wait stays well inside timeoutSeconds.
+function retryDelayMs(response, attempt) {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const ms = Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(retryAfter) - Date.now();
+    if (ms > 0) return Math.min(ms, 20000);
+  }
+  return RATE_LIMIT_BACKOFF_MS[attempt] + Math.floor(Math.random() * 1000);
+}
+
+// One AI call to the given upstream, waiting out per-minute rate limits.
+// Returns the final response - still a 429 if every retry was rate-limited too.
+async function callUpstream(upstream, body) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(upstream.url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${upstream.apiKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (response.status !== 429 || attempt >= RATE_LIMIT_BACKOFF_MS.length) {
+      return response;
+    }
+    const delay = retryDelayMs(response, attempt);
+    logger.info('AI upstream rate-limited; backing off', {
+      url: upstream.url,
+      attempt,
+      delay,
+    });
+    await sleep(delay);
+  }
+}
+
+// Hands back a session this call reserved but never got to use, because the AI
+// call ultimately failed. Without it a student would silently lose one of their
+// DAILY_AI_LIMIT uses for a request that returned nothing. Only ever called for
+// a session THIS request added, so an in-progress defense run is never touched.
+async function refundSession(usageRef, feature, sessionId, today) {
+  try {
+    await db().runTransaction(async (tx) => {
+      const snap = await tx.get(usageRef);
+      const data = snap.data();
+      if (!data || data.date !== today) return; // day rolled over; nothing to undo
+      const features = data.features || {};
+      const sessions = features[feature] || [];
+      const at = sessions.indexOf(sessionId);
+      if (at === -1) return;
+      sessions.splice(at, 1);
+      features[feature] = sessions;
+      tx.set(usageRef, {
+        date: today,
+        features,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (e) {
+    logger.warn('session refund failed', e);
+  }
+}
+
 exports.nararouter = onRequest(
   {
     region: REGION,
-    secrets: [NARAROUTER_API_KEY],
+    secrets: [NARAROUTER_API_KEY, GROQ_API_KEY],
     cors: true,
     memory: '256MiB',
     timeoutSeconds: 120,
@@ -171,13 +279,19 @@ exports.nararouter = onRequest(
       `call-${Date.now()}-${Math.random()}`;
     const today = new Date().toISOString().slice(0, 10);
     const usageRef = db().collection('aiUsage').doc(uid);
-    const allowed = await db().runTransaction(async (tx) => {
+    // `added` tells us this request is what reserved the session, so only it may
+    // hand the session back if the AI call then fails (see refundSession).
+    const { allowed, added } = await db().runTransaction(async (tx) => {
       const snap = await tx.get(usageRef);
       const data = snap.data() || {};
       const features = data.date === today ? data.features || {} : {};
       const sessions = features[feature] || [];
-      if (sessions.includes(sessionId)) return true; // part of an ongoing session
-      if (sessions.length >= DAILY_AI_LIMIT) return false; // this feature's cap hit
+      if (sessions.includes(sessionId)) {
+        return { allowed: true, added: false }; // part of an ongoing session
+      }
+      if (sessions.length >= DAILY_AI_LIMIT) {
+        return { allowed: false, added: false }; // this feature's cap hit
+      }
       sessions.push(sessionId);
       features[feature] = sessions;
       tx.set(usageRef, {
@@ -185,11 +299,14 @@ exports.nararouter = onRequest(
         features,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return true;
+      return { allowed: true, added: true };
     });
     if (!allowed) {
+      // 'daily-limit': the student spent this feature's allowance. Distinct from
+      // the 'busy' 429 below - this one genuinely means "come back tomorrow".
       res.status(429).json({
         error: {
+          code: 'daily-limit',
           message: `You've reached today's limit for this feature (${DAILY_AI_LIMIT} per day). Please try again tomorrow.`,
         },
       });
@@ -197,23 +314,37 @@ exports.nararouter = onRequest(
     }
 
     try {
-      const upstream = await fetch(
-        'https://router.bynara.id/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${NARAROUTER_API_KEY.value()}`,
-            'Content-Type': 'application/json',
+      const upstream = await callUpstream(upstreamFor(feature), req.body);
+
+      // Still rate-limited after every retry. Report it as 'busy' so the app
+      // tells the student to try again shortly, instead of wrongly claiming
+      // their daily allowance is gone - and give the reserved session back.
+      if (upstream.status === 429) {
+        logger.warn('AI upstream still rate-limited after retries', { feature });
+        if (added) await refundSession(usageRef, feature, sessionId, today);
+        res.status(429).json({
+          error: {
+            code: 'busy',
+            message:
+              'The AI service is busy right now. Please try again in a moment.',
           },
-          body: JSON.stringify(req.body),
-        },
-      );
+        });
+        return;
+      }
+
+      // Any other upstream failure didn't produce a result either, so it
+      // shouldn't cost a use.
+      if (!upstream.ok && added) {
+        await refundSession(usageRef, feature, sessionId, today);
+      }
+
       const text = await upstream.text();
       res.status(upstream.status);
       res.setHeader('Content-Type', 'application/json');
       res.send(text);
     } catch (error) {
       logger.error('NaraRouter proxy failed', error);
+      if (added) await refundSession(usageRef, feature, sessionId, today);
       res.status(502).json({
         error: { message: `Proxy request failed: ${error.message}` },
       });
