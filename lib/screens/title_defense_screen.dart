@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:speech_to_text/speech_to_text.dart' as speech;
+import 'package:record/record.dart';
 
 import '../app_colors.dart';
 import '../services/defense_ai_service.dart';
+import '../services/recording_store.dart';
+import '../services/speech_transcription_service.dart';
 import '../services/practice_history_service.dart';
 import 'auth_gate.dart';
 import 'defense_results_screen.dart';
@@ -101,6 +103,16 @@ class FinalDefenseScreen extends StatelessWidget {
 // Students can type answers or press the mic button to dictate an answer.
 // Every question runs on a countdown; when it hits zero the student gets a
 // short grace period to wrap up, then the answer submits itself.
+// What we're recording in: the encoder to ask for, plus the filename extension
+// and MIME type Whisper needs to decode the result.
+class _RecordingFormat {
+  const _RecordingFormat(this.encoder, this.extension, this.mimeType);
+
+  final AudioEncoder encoder;
+  final String extension;
+  final String mimeType;
+}
+
 class DefensePracticeSessionScreen extends StatefulWidget {
   const DefensePracticeSessionScreen({
     super.key,
@@ -129,9 +141,13 @@ class DefensePracticeSessionScreen extends StatefulWidget {
 class _DefensePracticeSessionScreenState
     extends State<DefensePracticeSessionScreen> {
   final answerController = TextEditingController();
-  final speechToText = speech.SpeechToText();
+  final recorder = AudioRecorder();
   final ai = DefenseAiService();
   final history = PracticeHistoryService();
+  // Shares the run's session id, so every answer transcribed during this
+  // practice counts inside the run's single session instead of spending a
+  // day's allowance of its own.
+  late final transcriber = SpeechTranscriptionService(ai.sessionId);
 
   // ---- Question timer -------------------------------------------------------
   // Each question gets widget.secondsPerQuestion (follow-ups get less). When
@@ -161,26 +177,17 @@ class _DefensePracticeSessionScreenState
   bool isEvaluating = false;
   final List<QaExchange> exchanges = [];
 
-  bool speechReady = false;
-  bool listening = false;
-  // Text already confirmed in the box before the current utterance started,
-  // so each new utterance's words are appended onto it instead of replacing
-  // or duplicating it.
-  String voiceBaseAnswer = '';
-  String speechStatus = 'Tap the mic and start speaking.';
-  String lastRecognizedWords = '';
-  // True only when the user pressed the mic button to stop, so we can tell
-  // that apart from one utterance ending naturally (which should restart
-  // listening, not end the whole session).
-  bool userStoppedListening = true;
-  // Bumped on every fresh listen() call. A result tagged with an older id is
-  // a stray late arrival from a session that already ended - ignoring it is
-  // cheap insurance against the exact kind of duplicate text this is fixing.
-  int voiceSessionId = 0;
-  // The plugin fires onStatus twice for a single utterance ending ('notListening'
-  // then 'done') - this stops both from scheduling their own restart, which
-  // would otherwise start two overlapping listen() sessions at once.
-  bool restartScheduled = false;
+  // Voice answers are recorded whole and transcribed in one go by Whisper, so
+  // there's no live text while the student talks the way the on-device
+  // recognizer gave us - but equally none of its restart-and-deduplicate
+  // machinery, because one recording produces exactly one transcript.
+  bool recording = false;
+  bool transcribing = false;
+  String speechStatus = 'Tap the mic and speak your answer.';
+  // Where the current clip lives (a file path natively, a blob: URL on web) and
+  // what it is, both needed to read it back and tell Whisper how to decode it.
+  String? recordingLocation;
+  _RecordingFormat? recordingFormat;
 
   String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
@@ -202,7 +209,7 @@ class _DefensePracticeSessionScreenState
   @override
   void dispose() {
     questionTimer?.cancel();
-    speechToText.stop();
+    recorder.dispose();
     answerController.dispose();
     super.dispose();
   }
@@ -219,7 +226,9 @@ class _DefensePracticeSessionScreenState
   }
 
   void tickTimer() {
-    if (!mounted || isEvaluating) return;
+    // Recording is the student answering, so that time is theirs to spend - but
+    // transcribing is us making them wait, and shouldn't cost them the clock.
+    if (!mounted || isEvaluating || transcribing) return;
     if (secondsLeft > 0) {
       setState(() => secondsLeft--);
     }
@@ -245,11 +254,10 @@ class _DefensePracticeSessionScreenState
   // box is recorded as no answer and the panel moves to the next topic.
   Future<void> handleTimeExpired() async {
     if (isEvaluating) return;
-    if (listening) {
-      userStoppedListening = true;
-      await speechToText.stop();
-      if (mounted) setState(() => listening = false);
-    }
+    // Time ran out mid-sentence: transcribe what they'd already said rather
+    // than throwing the whole spoken answer away.
+    if (recording) await stopAndTranscribe();
+    if (!mounted) return;
     final answer = answerController.text.trim();
     if (answer.isEmpty) {
       setState(() => isEvaluating = true);
@@ -344,10 +352,24 @@ class _DefensePracticeSessionScreenState
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: isEvaluating ? null : toggleListening,
-                    icon: Icon(listening ? Icons.stop : Icons.mic),
+                    onPressed: isEvaluating || transcribing
+                        ? null
+                        : toggleRecording,
+                    // Transcription takes a beat, and the student needs to see
+                    // that something is happening to their answer.
+                    icon: transcribing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(recording ? Icons.stop : Icons.mic),
                     label: Text(
-                      listening ? 'Stop Listening' : 'Answer with Voice',
+                      transcribing
+                          ? 'Transcribing...'
+                          : recording
+                          ? 'Stop and Transcribe'
+                          : 'Answer with Voice',
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -355,8 +377,10 @@ class _DefensePracticeSessionScreenState
                     speechStatus,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: listening ? AppColors.primary : AppColors.textGrey,
-                      fontWeight: listening
+                      color: recording || transcribing
+                          ? AppColors.primary
+                          : AppColors.textGrey,
+                      fontWeight: recording || transcribing
                           ? FontWeight.bold
                           : FontWeight.normal,
                     ),
@@ -527,164 +551,154 @@ class _DefensePracticeSessionScreenState
     );
   }
 
-  // Android's SpeechRecognizer only ever recognizes ONE utterance per
-  // listen() call - "continuous dictation" is an illusion the plugin creates
-  // by silently restarting its own native session after every pause. That
-  // internal restart is opaque to this Dart code, and on some Android
-  // devices it re-delivers the tail of the just-finished utterance before
-  // starting fresh, which is what was doubling text.
-  //
-  // The fix: stop relying on that hidden native restart. Use
-  // ListenMode.confirmation, which cleanly ends (`onStatus` reports 'done')
-  // after each single utterance, then explicitly start a brand new listen()
-  // ourselves for the next one - snapshotting the box's current text fresh
-  // each time. From the user's side it still feels like one continuous
-  // session; the difference is every restart is now something this code
-  // controls instead of something the OS does invisibly.
-  Future<void> toggleListening() async {
-    if (listening) {
-      userStoppedListening = true;
-      await speechToText.stop();
+  // Whisper transcribes a finished recording rather than listening live, so
+  // the flow here is simply record -> stop -> upload -> text. That loses the
+  // words-appearing-as-you-talk feedback the on-device recognizer gave, but it
+  // also removes every reason this screen used to need restart, dedupe and
+  // stale-result guards: one recording yields exactly one transcript.
+  Future<void> toggleRecording() async {
+    if (transcribing) return;
+    if (recording) {
+      await stopAndTranscribe();
+      return;
+    }
+
+    if (!await recorder.hasPermission()) {
+      if (!mounted) return;
+      setState(() => speechStatus = 'Microphone permission was blocked.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Allow microphone access, then try again.'),
+        ),
+      );
+      return;
+    }
+
+    final format = await resolveRecordingFormat();
+    final location = await newRecordingLocation(format.extension);
+    try {
+      await recorder.start(
+        RecordConfig(
+          encoder: format.encoder,
+          // Whisper resamples to 16kHz mono anyway, and the clip is base64'd
+          // into a JSON request - so anything richer costs upload size for no
+          // gain in what comes back.
+          sampleRate: 16000,
+          numChannels: 1,
+          bitRate: 24000,
+        ),
+        path: location,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => speechStatus = 'Could not start recording. Type your answer.',
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      recording = true;
+      recordingLocation = location;
+      recordingFormat = format;
+      speechStatus = 'Recording... tap stop when you finish your answer.';
+    });
+  }
+
+  Future<void> stopAndTranscribe() async {
+    final location = await recorder.stop() ?? recordingLocation;
+    final format = recordingFormat;
+    if (!mounted) return;
+    setState(() {
+      recording = false;
+      transcribing = true;
+      speechStatus = 'Transcribing your answer...';
+    });
+
+    if (location == null || format == null) {
       setState(() {
-        listening = false;
-        speechStatus = 'Voice answer stopped.';
+        transcribing = false;
+        speechStatus = 'Nothing was recorded. Try again or type your answer.';
       });
       return;
     }
 
-    if (!speechReady) {
-      speechReady = await speechToText.initialize(
-        onStatus: (status) {
-          if (!mounted) return;
-          setState(() => speechStatus = 'Speech status: $status');
-          if (status == 'done' || status == 'notListening') {
-            if (userStoppedListening) {
-              setState(() => listening = false);
-            } else if (!restartScheduled) {
-              restartScheduled = true;
-              restartForNextUtterance();
-            }
-          }
-        },
-        onError: (error) {
-          if (!mounted) return;
-          final message = speechErrorMessage(error.errorMsg);
-          setState(() {
-            listening = false;
-            speechStatus = message;
-          });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
-        },
+    try {
+      final bytes = await readRecording(location);
+      final text = await transcriber.transcribe(
+        audio: bytes,
+        mimeType: format.mimeType,
+        filename: 'answer.${format.extension}',
       );
-    }
-
-    if (!speechReady) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission was not granted.')),
-      );
-      return;
-    }
-
-    userStoppedListening = false;
-    await startListening();
-  }
-
-  // Starts recognizing exactly one utterance. voiceBaseAnswer is captured
-  // fresh right here, every time, from whatever is currently in the answer
-  // box - not once for the whole session like before - so a restart after a
-  // finished utterance appends onto the real current text instead of
-  // overwriting it with a stale snapshot from before the session started.
-  Future<void> startListening() async {
-    restartScheduled = false;
-    voiceBaseAnswer = answerController.text.trim();
-    lastRecognizedWords = '';
-    voiceSessionId++;
-    final currentSession = voiceSessionId;
-    setState(() {
-      listening = true;
-      speechStatus = 'Listening... speak now.';
-    });
-    await speechToText.listen(
-      listenOptions: speech.SpeechListenOptions(
-        // On web, this plugin ties the BROWSER's own "continuous" mode
-        // directly to partialResults (see speech_to_text_web.dart) - there is
-        // no separate on/off switch for it. Turning partialResults off forced
-        // the browser into its non-continuous, one-phrase-at-a-time mode,
-        // which stopped a duplicate-text bug on some phone browsers - but that
-        // one-shot mode is also what made Chrome auto-capitalize and punctuate
-        // every phrase and recognize Filipino words noticeably worse than its
-        // normal continuous session does. That trade was worse than the bug it
-        // fixed, so web keeps partialResults on like native does;
-        // listenMode.confirmation plus the restart logic above still recovers
-        // gracefully if the browser's continuous session ends on its own.
-        partialResults: true,
-        onDevice: !kIsWeb,
-        listenMode: speech.ListenMode.confirmation,
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 3),
-        cancelOnError: false,
-      ),
-      onResult: (result) {
-        if (!mounted || currentSession != voiceSessionId) return;
+      if (text.isEmpty) {
+        setState(
+          () => speechStatus =
+              "Didn't catch any speech. Try again or type your answer.",
+        );
+      } else {
+        appendVoiceText(text);
+        setState(
+          () => speechStatus = 'Added what you said. Record again to add more.',
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is StateError
+          ? error.message
+          : 'Could not transcribe your answer. You can type it instead.';
+      setState(() => speechStatus = message);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      await disposeRecording(location);
+      if (mounted) {
         setState(() {
-          lastRecognizedWords = result.recognizedWords;
-          speechStatus = result.finalResult
-              ? 'Final voice result received.'
-              : 'Writing your voice answer...';
+          transcribing = false;
+          recordingLocation = null;
         });
-        writeVoiceWords(result.recognizedWords);
-      },
-    );
+      }
+    }
   }
 
-  // Called when one utterance ends naturally (the user paused) while they're
-  // still holding the mic on. The short delay avoids restarting into the
-  // tail end of the same pause the recognizer just detected.
-  Future<void> restartForNextUtterance() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (!mounted || userStoppedListening) return;
-    await startListening();
+  // Whisper accepts several formats, but each platform encodes a different
+  // subset, so ask rather than assume. Opus leads because the clip travels as
+  // base64 inside a JSON body and it is far and away the smallest.
+  //
+  // The extension is not cosmetic: Whisper picks its decoder from the filename,
+  // and browsers wrap Opus in WebM where native platforms use Ogg - so the same
+  // encoder needs a different name depending on who produced it.
+  Future<_RecordingFormat> resolveRecordingFormat() async {
+    if (await recorder.isEncoderSupported(AudioEncoder.opus)) {
+      return kIsWeb
+          ? const _RecordingFormat(AudioEncoder.opus, 'webm', 'audio/webm')
+          : const _RecordingFormat(AudioEncoder.opus, 'ogg', 'audio/ogg');
+    }
+    if (await recorder.isEncoderSupported(AudioEncoder.aacLc)) {
+      return const _RecordingFormat(AudioEncoder.aacLc, 'm4a', 'audio/mp4');
+    }
+    // Uncompressed and much bigger, but universally supported - a last resort
+    // beats no voice answer at all.
+    return const _RecordingFormat(AudioEncoder.wav, 'wav', 'audio/wav');
   }
 
-  void writeVoiceWords(String words) {
-    // Speech results arrive while the user is still talking.
-    // This copies them into the answer box immediately.
-    final spokenWords = words.trim();
-    final text = voiceBaseAnswer.isEmpty
-        ? spokenWords
-        : spokenWords.isEmpty
-        ? voiceBaseAnswer
-        : '$voiceBaseAnswer $spokenWords';
-
+  // Appends rather than replaces, so a student can record in several goes, or
+  // type part of an answer and dictate the rest, without losing what's there.
+  void appendVoiceText(String text) {
+    final existing = answerController.text.trim();
     setState(() {
-      answerController.text = text;
+      answerController.text = existing.isEmpty ? text : '$existing $text';
       answerController.selection = TextSelection.fromPosition(
         TextPosition(offset: answerController.text.length),
       );
     });
   }
 
-  String speechErrorMessage(String code) {
-    if (code == 'network') {
-      return kIsWeb
-          ? 'Browser speech network error. Type your answer or try the mobile app/device with speech services enabled.'
-          : 'Speech network error. Check internet or install offline speech recognition on the device.';
-    }
-    if (code == 'not-allowed' || code == 'permission-denied') {
-      return 'Microphone permission was blocked. Allow microphone access and try again.';
-    }
-    return 'Speech error: $code';
-  }
-
   Future<void> submitAnswer() async {
-    // Stop any active mic session so a late result can't overwrite the answer.
-    if (listening) {
-      await speechToText.stop();
-      if (mounted) setState(() => listening = false);
-    }
+    // Submitting mid-recording should hand in what they said, not drop it.
+    if (recording) await stopAndTranscribe();
     if (!mounted) return;
     final answer = answerController.text.trim();
     if (answer.isEmpty) {
@@ -759,9 +773,7 @@ class _DefensePracticeSessionScreenState
 
   void resetAnswerInput() {
     answerController.clear();
-    voiceBaseAnswer = '';
-    lastRecognizedWords = '';
-    speechStatus = 'Tap the mic and start speaking.';
+    speechStatus = 'Tap the mic and speak your answer.';
   }
 
   Future<void> finishSession() async {

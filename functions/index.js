@@ -144,10 +144,18 @@ const UPSTREAMS = {
     url: 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: () => GROQ_API_KEY.value(),
   },
+  // Whisper. A different endpoint on the same provider, and the only one that
+  // takes audio rather than chat messages.
+  groqAudio: {
+    url: 'https://api.groq.com/openai/v1/audio/transcriptions',
+    apiKey: () => GROQ_API_KEY.value(),
+    audio: true,
+  },
 };
 
 const FEATURE_UPSTREAM = {
   'title-generator': 'groq',
+  'speech-to-text': 'groqAudio',
 };
 
 const upstreamFor = (feature) =>
@@ -182,17 +190,45 @@ function retryDelayMs(response, attempt) {
   return RATE_LIMIT_BACKOFF_MS[attempt] + Math.floor(Math.random() * 1000);
 }
 
+// Whisper wants multipart/form-data, but this proxy - and the app's auth, CORS
+// and daily-limit handling around it - all speak JSON. So the app posts the
+// recording as base64 and the form gets rebuilt here, which keeps audio on the
+// same signed-in, rate-limited path as every other AI call instead of needing a
+// second endpoint with its own copy of that logic.
+//
+// Rebuilt per attempt on purpose: fetch consumes the body, so a retry can't
+// reuse the same FormData.
+function audioForm(body) {
+  const bytes = Buffer.from(String(body.audio || ''), 'base64');
+  const form = new FormData();
+  form.append(
+    'file',
+    new Blob([bytes], { type: body.mimeType || 'audio/webm' }),
+    body.filename || 'answer.webm',
+  );
+  form.append('model', body.model || 'whisper-large-v3');
+  form.append('response_format', 'json');
+  // Pinning the language stops Whisper guessing from the first few words and
+  // occasionally deciding a Taglish answer should be translated instead of
+  // transcribed. Students answer in English.
+  form.append('language', body.language || 'en');
+  return form;
+}
+
 // One AI call to the given upstream, waiting out per-minute rate limits.
 // Returns the final response - still a 429 if every retry was rate-limited too.
 async function callUpstream(upstream, body) {
   for (let attempt = 0; ; attempt++) {
+    const isAudio = upstream.audio === true;
     const response = await fetch(upstream.url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${upstream.apiKey()}`,
-        'Content-Type': 'application/json',
+        // fetch writes multipart's Content-Type itself, boundary included -
+        // setting it by hand would drop the boundary and break the upload.
+        ...(isAudio ? {} : { 'Content-Type': 'application/json' }),
       },
-      body: JSON.stringify(body),
+      body: isAudio ? audioForm(body) : JSON.stringify(body),
     });
     if (response.status !== 429 || attempt >= RATE_LIMIT_BACKOFF_MS.length) {
       return response;

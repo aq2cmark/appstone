@@ -27,6 +27,9 @@ class AiFeature {
   // they share this one daily allowance.
   static const aiWorkflow = 'ai-workflow';
   static const defensePractice = 'defense-practice';
+  // Transcribing a spoken defense answer. Routed to Whisper rather than a chat
+  // model - see functions/index.js.
+  static const speechToText = 'speech-to-text';
 }
 
 final _random = Random();

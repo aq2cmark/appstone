@@ -57,6 +57,10 @@ class DefenseAiService {
   // session), so all of its AI calls count as a SINGLE session against the cap.
   final String _sessionId = newAiSessionId();
 
+  // Exposed so transcribing this run's spoken answers can reuse the same id and
+  // ride along inside this one session, rather than counting as its own.
+  String get sessionId => _sessionId;
+
   Future<Map<String, dynamic>> _generateJson(String prompt) async {
     final uri = Uri.parse(naraRouterEndpoint);
 
