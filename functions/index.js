@@ -29,7 +29,16 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
-const REGION = 'us-central1';
+// Firestore lives in asia-east2, so the functions do too: the admin actions each
+// make several sequential reads/writes, and from us-central1 every one of them
+// crossed the Pacific (~180ms each, ~1s of round trips per add/delete). In-region
+// they're ~1ms. It's also ~40ms from users in PH instead of ~200ms.
+//
+// us-central1 stays in the list only so already-shipped builds keep working - the
+// region is compile-time in the client (the callable region and the nararouter
+// URL), so an installed copy still calls us-central1. Once every client is on a
+// build that targets asia-east2, drop it from this list and redeploy.
+const REGION = ['asia-east2', 'us-central1'];
 
 // Max AI sessions per user PER FEATURE per calendar day (UTC). Each module
 // (title generator, paper checker, AI workflow, defense practice) gets its own

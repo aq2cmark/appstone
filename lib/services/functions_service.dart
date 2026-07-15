@@ -5,11 +5,11 @@ import 'package:cloud_functions/cloud_functions.dart';
 // self-serve password resets. Each function verifies the caller is a real admin
 // before acting, so these powers never live inside the app.
 //
-// The functions are deployed in us-central1 (see functions/index.js).
+// The functions run in asia-east2, alongside Firestore (see functions/index.js).
 class FunctionsService {
   FunctionsService({FirebaseFunctions? functions})
     : _functions =
-          functions ?? FirebaseFunctions.instanceFor(region: 'us-central1');
+          functions ?? FirebaseFunctions.instanceFor(region: 'asia-east2');
 
   final FirebaseFunctions _functions;
 

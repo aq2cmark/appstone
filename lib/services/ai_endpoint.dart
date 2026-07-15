@@ -8,7 +8,7 @@
 //
 // It can be overridden at build time if ever needed (e.g. to hit the local
 // Functions emulator):
-//   flutter run --dart-define=NARAROUTER_ENDPOINT=http://127.0.0.1:5001/appstone-db/us-central1/nararouter
+//   flutter run --dart-define=NARAROUTER_ENDPOINT=http://127.0.0.1:5001/appstone-db/asia-east2/nararouter
 import 'dart:convert';
 import 'dart:math';
 
@@ -16,7 +16,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 const naraRouterEndpoint = String.fromEnvironment(
   'NARAROUTER_ENDPOINT',
-  defaultValue: 'https://us-central1-appstone-db.cloudfunctions.net/nararouter',
+  defaultValue: 'https://asia-east2-appstone-db.cloudfunctions.net/nararouter',
 );
 
 // Feature ids for the per-feature daily limit. Each gets its own allowance.
