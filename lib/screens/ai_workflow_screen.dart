@@ -20,19 +20,19 @@ class AIWorkflowScreen extends StatefulWidget {
   State<AIWorkflowScreen> createState() => _AIWorkflowScreenState();
 }
 
-enum _DurationUnit { days, weeks, months }
-
 class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   static const _prefsKey = 'workflow_plan_v1';
 
   final _extractor = DocumentTextExtractor();
   final _service = WorkflowService();
-  final _amountController = TextEditingController(text: '4');
 
   final _dateFmt = DateFormat('MMM d');
   final _dateFmtYear = DateFormat('MMM d, yyyy');
 
-  _DurationUnit _unit = _DurationUnit.weeks;
+  // The date the capstone is actually due. A real deadline is a date, not a
+  // quantity - asking for an amount and a unit meant "3 days, 2 weeks and 1
+  // month from now" had no way to be said, and made months a flat 30 days.
+  DateTime? _deadline;
   PlatformFile? _selectedPaper;
 
   WorkflowPlan? _plan;
@@ -44,12 +44,6 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   void initState() {
     super.initState();
     _loadSavedPlan();
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadSavedPlan() async {
@@ -158,55 +152,26 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '2. How long will you work on it?',
+                  '2. When do you need to finish?',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 96,
-                      child: TextField(
-                        controller: _amountController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Amount',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<_DurationUnit>(
-                        value: _unit,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Unit',
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: _DurationUnit.days,
-                            child: Text('Days'),
-                          ),
-                          DropdownMenuItem(
-                            value: _DurationUnit.weeks,
-                            child: Text('Weeks'),
-                          ),
-                          DropdownMenuItem(
-                            value: _DurationUnit.months,
-                            child: Text('Months'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) setState(() => _unit = value);
-                        },
-                      ),
-                    ),
-                  ],
+                OutlinedButton.icon(
+                  onPressed: _generating ? null : _pickDeadline,
+                  icon: const Icon(Icons.event),
+                  label: Text(
+                    _deadline == null
+                        ? 'Pick your deadline'
+                        : _dateFmtYear.format(_deadline!),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Deadline: ${_dateFmtYear.format(_previewDeadline())}',
+                  _deadline == null
+                      ? 'Choose the date your capstone is due.'
+                      : _daysUntilDeadline() == 1
+                      ? 'Tomorrow - 1 day to work with.'
+                      : '${_daysUntilDeadline()} days to work with.',
                   style: const TextStyle(color: AppColors.textGrey),
                 ),
               ],
@@ -643,20 +608,44 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
 
   // ---- Actions --------------------------------------------------------------
 
-  int _durationInDays() {
-    final amount = int.tryParse(_amountController.text.trim()) ?? 0;
-    switch (_unit) {
-      case _DurationUnit.days:
-        return amount;
-      case _DurationUnit.weeks:
-        return amount * 7;
-      case _DurationUnit.months:
-        return amount * 30;
-    }
+  // Dates only, no clock. Counting whole calendar days keeps "due tomorrow"
+  // worth 1 day whether it's picked at 8am or 11pm, and stops an hour of
+  // drift (or a DST jump) from quietly rounding a day off the plan.
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  int _daysUntilDeadline() {
+    final deadline = _deadline;
+    if (deadline == null) return 0;
+    return _dateOnly(deadline).difference(_dateOnly(DateTime.now())).inDays;
   }
 
-  DateTime _previewDeadline() =>
-      DateTime.now().add(Duration(days: _durationInDays().clamp(0, 100000)));
+  Future<void> _pickDeadline() async {
+    final today = _dateOnly(DateTime.now());
+    // A plan needs at least one day of work to schedule into, and there's no
+    // sense offering a date that's already gone.
+    final earliest = today.add(const Duration(days: 1));
+    final current = _deadline;
+    // showDatePicker asserts initialDate isn't before firstDate. A deadline
+    // picked earlier can fall behind that line if the screen is left open past
+    // it, so only reuse the old date while it's still reachable.
+    final initial = current != null && !current.isBefore(earliest)
+        ? current
+        : today.add(const Duration(days: 28));
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: earliest,
+      lastDate: today.add(const Duration(days: 730)),
+      helpText: 'When is your capstone due?',
+    );
+    if (picked == null) return;
+    setState(() {
+      _deadline = _dateOnly(picked);
+      _error = null;
+    });
+  }
 
   Future<void> _pickPaper() async {
     final result = await FilePicker.pickFiles(
@@ -677,9 +666,13 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       setState(() => _error = 'Upload your paper first.');
       return;
     }
-    final totalDays = _durationInDays();
+    final totalDays = _daysUntilDeadline();
     if (totalDays < 1) {
-      setState(() => _error = 'Enter how long you have (at least 1 day).');
+      setState(
+        () => _error = _deadline == null
+            ? 'Pick the date your capstone is due.'
+            : 'That deadline has already passed. Pick a new one.',
+      );
       return;
     }
 
