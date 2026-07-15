@@ -34,11 +34,12 @@ admin.initializeApp();
 // crossed the Pacific (~180ms each, ~1s of round trips per add/delete). In-region
 // they're ~1ms. It's also ~40ms from users in PH instead of ~200ms.
 //
-// us-central1 stays in the list only so already-shipped builds keep working - the
-// region is compile-time in the client (the callable region and the nararouter
-// URL), so an installed copy still calls us-central1. Once every client is on a
-// build that targets asia-east2, drop it from this list and redeploy.
-const REGION = ['asia-east2', 'us-central1'];
+// Keep this in step with the client: the region is compile-time there (the
+// callable region in functions_service.dart and the nararouter URL in
+// ai_endpoint.dart), so a build ships pinned to whatever this says. Moving
+// regions means deploying to both, rebuilding the web, and only then dropping
+// the old one - otherwise the live bundle calls a region that no longer exists.
+const REGION = 'asia-east2';
 
 // Max AI sessions per user PER FEATURE per calendar day (UTC). Each module
 // (title generator, paper checker, AI workflow, defense practice) gets its own
