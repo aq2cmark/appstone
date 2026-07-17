@@ -465,7 +465,6 @@ exports.createStudent = onCall(
         // own (then cleared). Their real password lives in Auth, never here.
         tempPassword,
         mustChangePassword: true,
-        resetRequested: false,
       };
       const batch = db().batch();
       batch.update(groupRef, {
@@ -519,7 +518,7 @@ exports.resetStudentPassword = onCall(
       if (!snap.exists) return;
       const students = (snap.data().students || []).map((s) =>
         s.uid === uid
-          ? { ...s, tempPassword, mustChangePassword: true, resetRequested: false }
+          ? { ...s, tempPassword, mustChangePassword: true }
           : s,
       );
       tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });

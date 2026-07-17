@@ -221,11 +221,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       (sum, group) => sum + group.students.length,
     );
     final premiumGroups = groups.where((group) => group.isPremium).length;
-    // Students who used "Forgot password" and are waiting for a reset.
-    final pendingResets = groups
-        .expand((group) => group.students)
-        .where((student) => student.resetRequested)
-        .length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -284,26 +279,6 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 ),
               ],
             ),
-            if (pendingResets > 0) ...[
-              const SizedBox(height: 20),
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.notification_important,
-                    color: Colors.red,
-                  ),
-                  title: Text(
-                    '$pendingResets password reset '
-                    '${pendingResets == 1 ? 'request' : 'requests'} pending',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: const Text(
-                    'Look for the red bell next to a student, then use Reset '
-                    'password to generate a new temporary password.',
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 28),
             if (groups.isEmpty)
               const Card(
@@ -504,28 +479,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                         for (final student in group.students)
                           DataRow(
                             cells: [
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // Notification icon on the exact student
-                                    // who asked for a password reset, so the
-                                    // admin can spot them at a glance.
-                                    if (student.resetRequested) ...[
-                                      const Tooltip(
-                                        message: 'Password reset requested',
-                                        child: Icon(
-                                          Icons.notification_important,
-                                          color: Colors.red,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                    ],
-                                    Text(student.name),
-                                  ],
-                                ),
-                              ),
+                              DataCell(Text(student.name)),
                               DataCell(Text(student.email)),
                               DataCell(Text(student.studentId)),
                               // Shows the temp password until the student sets

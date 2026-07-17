@@ -667,7 +667,6 @@ class StudentAccount {
     required this.password,
     String? tempPassword,
     this.mustChangePassword = false,
-    this.resetRequested = false,
     this.uid = '',
   }) : tempPassword = tempPassword ?? password;
 
@@ -683,7 +682,6 @@ class StudentAccount {
       // password is stored so the admin still sees something to share.
       tempPassword: map['tempPassword'] as String? ?? password,
       mustChangePassword: map['mustChangePassword'] as bool? ?? false,
-      resetRequested: map['resetRequested'] as bool? ?? false,
       // The student's Firebase Auth uid. Empty only for a legacy record that
       // predates the Auth migration.
       uid: map['uid'] as String? ?? '',
@@ -707,10 +705,6 @@ class StudentAccount {
   // true the student is forced to set their own password after logging in.
   final bool mustChangePassword;
 
-  // True when the student used "Forgot password" and is waiting on the admin.
-  // Drives the notification icon next to the student on the admin dashboard.
-  final bool resetRequested;
-
   // The student's Firebase Auth uid, used to reset/delete their login and to
   // match them after they sign in. Empty for a legacy, un-migrated record.
   final String uid;
@@ -720,7 +714,6 @@ class StudentAccount {
     String? password,
     String? tempPassword,
     bool? mustChangePassword,
-    bool? resetRequested,
   }) {
     return StudentAccount(
       id: id,
@@ -730,7 +723,6 @@ class StudentAccount {
       password: password ?? this.password,
       tempPassword: tempPassword ?? this.tempPassword,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
-      resetRequested: resetRequested ?? this.resetRequested,
       uid: uid,
     );
   }
@@ -746,7 +738,6 @@ class StudentAccount {
       // the uid are stored here.
       'tempPassword': tempPassword,
       'mustChangePassword': mustChangePassword,
-      'resetRequested': resetRequested,
       'uid': uid,
     };
   }
