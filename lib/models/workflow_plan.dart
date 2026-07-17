@@ -8,6 +8,7 @@ class WorkflowPhase {
     required this.name,
     required this.weight,
     required this.note,
+    this.tips = '',
     this.done = false,
     this.completedOn,
   });
@@ -15,6 +16,10 @@ class WorkflowPhase {
   final String name;
   final double weight;
   final String note;
+  // Plain-language help for this phase (what it involves, concrete tips, common
+  // mistakes). Generated together with the plan so tapping a phase shows tips
+  // instantly - no second AI call and no loading.
+  final String tips;
   bool done;
   DateTime? completedOn;
 
@@ -22,6 +27,7 @@ class WorkflowPhase {
         'name': name,
         'weight': weight,
         'note': note,
+        'tips': tips,
         'done': done,
         'completedOn': completedOn?.toIso8601String(),
       };
@@ -30,6 +36,7 @@ class WorkflowPhase {
         name: json['name'] as String? ?? 'Phase',
         weight: (json['weight'] as num?)?.toDouble() ?? 1,
         note: json['note'] as String? ?? '',
+        tips: json['tips'] as String? ?? '',
         done: json['done'] as bool? ?? false,
         completedOn: json['completedOn'] == null
             ? null

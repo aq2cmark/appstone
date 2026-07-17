@@ -40,6 +40,7 @@ class WorkflowService {
                 : 'Phase',
             weight: (p['weight'] as num?)?.toDouble() ?? 1,
             note: (p['note'] as String?)?.trim() ?? '',
+            tips: (p['tips'] as String?)?.trim() ?? '',
           ),
         )
         .where((p) => p.weight > 0)
@@ -72,6 +73,10 @@ For each phase give:
   time). Give already-strong parts a small weight and missing/weak parts a
   large weight. The weights do not need to add up to any specific total.
 - "note": one short sentence on exactly what to do in that phase.
+- "tips": practical help the student can act on for this phase. In plain
+  language cover what this phase involves and why it matters, 3 to 5 concrete
+  actionable tips to do it well, and one or two common mistakes to avoid. Use
+  short sentences or simple "-" bullet points. Do NOT use markdown headers.
 
 Use 4 to 8 phases in the logical order they should be worked on. Also give a
 short "assessment" (1-2 sentences) of where the paper currently stands.
@@ -80,7 +85,7 @@ Respond ONLY with JSON in exactly this shape:
 {
   "assessment": "...",
   "phases": [
-    {"name": "Chapter 1 - Introduction", "weight": 10, "note": "..."}
+    {"name": "Chapter 1 - Introduction", "weight": 10, "note": "...", "tips": "..."}
   ]
 }
 
@@ -88,63 +93,6 @@ Respond ONLY with JSON in exactly this shape:
 $paperText
 === STUDENT PAPER END ===
 ''';
-  }
-
-  // Plain-language tips/help for one phase (chapter) of the plan, shown when the
-  // student taps a phase card. Shares the main AI Workflow daily bucket, so
-  // generating a plan and tapping chapters for tips draw from the same 5/day.
-  Future<String> getPhaseHelp({
-    required String phaseName,
-    String? note,
-    String? assessment,
-  }) async {
-    final prompt =
-        '''
-You are a capstone project adviser for a BS Information Technology student.
-Give practical, specific help for this phase of their capstone timeline.
-
-Phase: "$phaseName"
-${note != null && note.trim().isNotEmpty ? 'Planned focus: ${note.trim()}' : ''}
-${assessment != null && assessment.trim().isNotEmpty ? 'Overall paper status: ${assessment.trim()}' : ''}
-
-In plain language explain:
-- what this phase involves and why it matters,
-- 3 to 5 concrete, actionable tips to do it well,
-- one or two common mistakes to avoid.
-
-Keep it concise. Use short paragraphs or simple bullet points ("-"). Do NOT use
-markdown headers.
-''';
-
-    final response = await http.post(
-      Uri.parse(naraRouterEndpoint),
-      headers: await naraRouterHeaders(
-        feature: AiFeature.aiWorkflow,
-        sessionId: newAiSessionId(),
-      ),
-      body: jsonEncode({
-        'model': _model,
-        'messages': [
-          {'role': 'user', 'content': prompt},
-        ],
-      }),
-    );
-
-    if (response.statusCode == 429) {
-      throw StateError(aiRateLimitMessage(response.body));
-    }
-    if (response.statusCode != 200) {
-      throw StateError(
-        'NaraRouter API error (${response.statusCode}): ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final text = data['choices']?[0]?['message']?['content'] as String?;
-    if (text == null || text.trim().isEmpty) {
-      throw StateError('The AI did not return any tips. Please try again.');
-    }
-    return text.trim();
   }
 
   Future<Map<String, dynamic>> _generateJson(String prompt) async {

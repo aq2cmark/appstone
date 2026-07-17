@@ -323,6 +323,9 @@ class _DefensePracticeSessionScreenState
                   if (inGrace) buildGraceBanner(),
                   Card(
                     color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                     child: ListTile(
                       leading: const CircleAvatar(
                         backgroundColor: AppColors.primary,
