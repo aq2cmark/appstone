@@ -41,6 +41,16 @@ admin.initializeApp();
 // the old one - otherwise the live bundle calls a region that no longer exists.
 const REGION = 'asia-east2';
 
+// Groq refuses calls from asia-east2 (Hong Kong) at its Cloudflare edge with a
+// bare 403 Forbidden - a geographic block, unrelated to the API key. So the
+// proxy, which lives in REGION next to Firestore, can't reach Groq directly.
+// A second small function (exports.groqRelay) runs HERE instead - a region Groq
+// permits - and the proxy forwards its Groq-bound calls to it. NaraRouter has no
+// such block, so it's still called directly from REGION.
+const GROQ_RELAY_REGION = 'us-central1';
+const GROQ_RELAY_URL =
+  'https://us-central1-appstone-db.cloudfunctions.net/groqRelay';
+
 // Max AI sessions per user PER FEATURE per calendar day (UTC). Each module
 // (title generator, paper checker, AI workflow, defense practice) gets its own
 // allowance of this many. One session = one use; a whole defense-practice run
@@ -50,9 +60,15 @@ const DAILY_AI_LIMIT = 5;
 // Secrets (set once, never committed):
 //   firebase functions:secrets:set NARAROUTER_API_KEY
 //   firebase functions:secrets:set GROQ_API_KEY
+//   firebase functions:secrets:set GROQ_RELAY_SECRET
 //   firebase functions:secrets:set BREVO_API_KEY
 const NARAROUTER_API_KEY = defineSecret('NARAROUTER_API_KEY');
 const GROQ_API_KEY = defineSecret('GROQ_API_KEY');
+// Shared secret gating the internal proxy -> relay hop. The relay is a public
+// HTTPS function (as the proxy is), so this is what stops anyone else invoking
+// it and spending our Groq quota. One secret, referenced by both functions, so
+// they always see the same value.
+const GROQ_RELAY_SECRET = defineSecret('GROQ_RELAY_SECRET');
 const BREVO_API_KEY = defineSecret('BREVO_API_KEY');
 
 // Non-secret config, set in functions/.env (BREVO_SENDER_EMAIL must be a sender
@@ -138,18 +154,11 @@ async function writeAudit(actor, action, description) {
 
 // ---- Phase 1: NaraRouter AI proxy ------------------------------------------
 
-// Where a feature's AI calls actually go. Both are OpenAI-compatible, so the
-// app's request body works against either without change.
-//
-// The title generator lives on Groq: its free tier allows 30 requests/minute
-// against NaraRouter's 10, and it's the lightest feature (one short prompt), so
-// moving it buys NaraRouter headroom for the heavier ones at no cost. Anything
-// not listed in FEATURE_UPSTREAM stays on NaraRouter.
-const UPSTREAMS = {
-  nararouter: {
-    url: 'https://router.bynara.id/v1/chat/completions',
-    apiKey: () => NARAROUTER_API_KEY.value(),
-  },
+// The real Groq endpoints. Reached ONLY from the relay (exports.groqRelay),
+// which runs in a region Groq permits - the proxy itself can't call these from
+// asia-east2 (see GROQ_RELAY_REGION). Both are OpenAI-compatible, so the app's
+// request body works unchanged.
+const GROQ_UPSTREAMS = {
   groq: {
     url: 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: () => GROQ_API_KEY.value(),
@@ -161,6 +170,23 @@ const UPSTREAMS = {
     apiKey: () => GROQ_API_KEY.value(),
     audio: true,
   },
+};
+
+// Where a feature's AI calls go, from the PROXY's point of view. An entry with a
+// `url` is called directly; one with a `relayTarget` is sent through the US relay
+// instead, because Groq refuses calls from the proxy's own region.
+//
+// The title generator and voice transcription run on Groq: its free tier allows
+// 30 requests/minute against NaraRouter's 10, so keeping the two lightest, most
+// bursted features there buys NaraRouter headroom for the heavier ones. Anything
+// not listed in FEATURE_UPSTREAM stays on NaraRouter, which is called directly.
+const UPSTREAMS = {
+  nararouter: {
+    url: 'https://router.bynara.id/v1/chat/completions',
+    apiKey: () => NARAROUTER_API_KEY.value(),
+  },
+  groq: { relayTarget: 'groq' },
+  groqAudio: { relayTarget: 'groqAudio' },
 };
 
 const FEATURE_UPSTREAM = {
@@ -253,6 +279,23 @@ async function callUpstream(upstream, body) {
   }
 }
 
+// Groq-bound features can't call Groq from here (it 403s this region), so they
+// post to the relay (exports.groqRelay), which runs where Groq is allowed and
+// hands the response straight back. The relay returns Groq's own status and body
+// verbatim, so to the caller this is indistinguishable from a direct upstream
+// response - the 429/refund/forward handling below needs no special case. One
+// POST, no retry: the relay owns the rate-limit backoff against Groq.
+async function callRelay(relayTarget, body) {
+  return fetch(GROQ_RELAY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Relay-Secret': GROQ_RELAY_SECRET.value(),
+    },
+    body: JSON.stringify({ target: relayTarget, body }),
+  });
+}
+
 // Hands back a session this call reserved but never got to use, because the AI
 // call ultimately failed. Without it a student would silently lose one of their
 // DAILY_AI_LIMIT uses for a request that returned nothing. Only ever called for
@@ -283,7 +326,9 @@ async function refundSession(usageRef, feature, sessionId, today) {
 exports.nararouter = onRequest(
   {
     region: REGION,
-    secrets: [NARAROUTER_API_KEY, GROQ_API_KEY],
+    // GROQ_API_KEY lives on the relay now, not here - this function only needs
+    // the NaraRouter key (direct calls) and the relay secret (Groq calls).
+    secrets: [NARAROUTER_API_KEY, GROQ_RELAY_SECRET],
     cors: true,
     memory: '256MiB',
     timeoutSeconds: 120,
@@ -360,7 +405,12 @@ exports.nararouter = onRequest(
     }
 
     try {
-      const upstream = await callUpstream(upstreamFor(feature), req.body);
+      // Direct call for NaraRouter; the relay hop for Groq-bound features. Both
+      // return a plain fetch Response, so everything below treats them alike.
+      const route = upstreamFor(feature);
+      const upstream = route.relayTarget
+        ? await callRelay(route.relayTarget, req.body)
+        : await callUpstream(route, req.body);
 
       // Still rate-limited after every retry. Report it as 'busy' so the app
       // tells the student to try again shortly, instead of wrongly claiming
@@ -385,6 +435,24 @@ exports.nararouter = onRequest(
       }
 
       const text = await upstream.text();
+
+      // Surface the provider's own error. Without this the proxy forwards the
+      // upstream body straight to the app and logs nothing, so a real fault -
+      // a bad or expired API key, an account limit, a decommissioned model -
+      // only ever shows up as an opaque status code on the client and is
+      // invisible in Cloud Logging. Naming the provider makes a Groq-only
+      // failure attributable at a glance. Safe to log: the body may echo the
+      // request, but the API key lives solely in the Authorization header we
+      // send upstream and is never part of the response.
+      if (!upstream.ok) {
+        logger.error('AI upstream returned an error', {
+          feature,
+          provider: FEATURE_UPSTREAM[feature] || 'nararouter',
+          status: upstream.status,
+          body: text.slice(0, 500),
+        });
+      }
+
       res.status(upstream.status);
       res.setHeader('Content-Type', 'application/json');
       res.send(text);
@@ -393,6 +461,64 @@ exports.nararouter = onRequest(
       if (added) await refundSession(usageRef, feature, sessionId, today);
       res.status(502).json({
         error: { message: `Proxy request failed: ${error.message}` },
+      });
+    }
+  },
+);
+
+// The Groq relay. Groq blocks the proxy's region (asia-east2) at its edge, so the
+// proxy can't reach Groq directly; this function runs in GROQ_RELAY_REGION - a
+// region Groq permits - and exists solely to make the Groq call on the proxy's
+// behalf and hand back the raw result. It does NO auth or rate-limit accounting
+// of its own: the proxy already verified the user, charged the daily allowance
+// and applied the per-minute backoff before forwarding. This hop is gated only
+// by the shared secret, so nothing but our proxy can spend the Groq key. Not
+// called by browsers, so no CORS.
+exports.groqRelay = onRequest(
+  {
+    region: GROQ_RELAY_REGION,
+    secrets: [GROQ_API_KEY, GROQ_RELAY_SECRET],
+    memory: '256MiB',
+    timeoutSeconds: 120,
+    // Small cap: only our single proxy ever calls this, one hop per AI request.
+    maxInstances: 20,
+  },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: { message: 'Method not allowed' } });
+      return;
+    }
+    // The only thing between this public URL and our Groq quota. A wrong or
+    // missing secret is refused before any Groq call is made.
+    if (req.headers['x-relay-secret'] !== GROQ_RELAY_SECRET.value()) {
+      res.status(403).json({ error: { message: 'Forbidden' } });
+      return;
+    }
+    const target = GROQ_UPSTREAMS[req.body && req.body.target];
+    if (!target) {
+      res.status(400).json({ error: { message: 'Unknown relay target' } });
+      return;
+    }
+    try {
+      const response = await callUpstream(target, req.body.body || {});
+      const text = await response.text();
+      if (!response.ok) {
+        logger.error('Groq relay upstream error', {
+          target: req.body.target,
+          status: response.status,
+          body: text.slice(0, 500),
+        });
+      }
+      res.status(response.status);
+      res.setHeader(
+        'Content-Type',
+        response.headers.get('content-type') || 'application/json',
+      );
+      res.send(text);
+    } catch (error) {
+      logger.error('Groq relay failed', error);
+      res.status(502).json({
+        error: { message: `Relay request failed: ${error.message}` },
       });
     }
   },
