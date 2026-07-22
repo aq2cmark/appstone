@@ -32,6 +32,26 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+# App launcher icons + web favicon, generated from the Appstone mark.
+# Sources are rendered from the same painter as the in-app logo
+# (assets/branding/appstone_icon*.png). Regenerate with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/branding/appstone_icon_1024.png"
+  # Full-bleed square source; the OS rounds the corners into a tile itself.
+  android: true
+  adaptive_icon_background: "#8B1A1A"
+  adaptive_icon_foreground: "assets/branding/appstone_icon_foreground_1024.png"
+  ios: true
+  # iOS rejects icons with transparency; the base is opaque, but flatten to be safe.
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/branding/appstone_icon_1024.png"
+    background_color: "#8B1A1A"
+    theme_color: "#8B1A1A"

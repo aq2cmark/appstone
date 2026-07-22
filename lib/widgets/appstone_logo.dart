@@ -43,6 +43,51 @@ class AppstoneLogo extends StatelessWidget {
   }
 }
 
+// Paints the Appstone mark into a [size]-square area. Shared by [AppstoneLogo]
+// and the launcher-icon generator (test/generate_launcher_icons), so the in-app
+// mark and the app icon are drawn from one definition. Pass [tileColor] null to
+// paint only the "A" glyph on a transparent ground. Geometry is authored in the
+// same 512-unit box as assets/branding/appstone_logo.svg, scaled to fit, so the
+// stroke weight and corner radius keep their proportions at every size.
+void paintAppstoneMark(
+  Canvas canvas,
+  Size size, {
+  Color? tileColor,
+  Color markColor = const Color(0xFFFFFFFF),
+}) {
+  final s = size.width / 512.0;
+  Offset p(double x, double y) => Offset(x * s, y * s);
+
+  if (tileColor != null) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(116 * s)),
+      Paint()
+        ..color = tileColor
+        ..isAntiAlias = true,
+    );
+  }
+
+  final stroke = Paint()
+    ..color = markColor
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 44 * s
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round
+    ..isAntiAlias = true;
+
+  // Flat "capstone" apex (236->276) with the two legs, then the crossbar -
+  // matches the "M236 132 H276 L360 388 M236 132 L152 388" + "M190 300 H322"
+  // paths in the SVG asset.
+  final a = Path()
+    ..moveTo(p(236, 132).dx, p(236, 132).dy)
+    ..lineTo(p(276, 132).dx, p(276, 132).dy)
+    ..lineTo(p(360, 388).dx, p(360, 388).dy)
+    ..moveTo(p(236, 132).dx, p(236, 132).dy)
+    ..lineTo(p(152, 388).dx, p(152, 388).dy);
+  canvas.drawPath(a, stroke);
+  canvas.drawLine(p(190, 300), p(322, 300), stroke);
+}
+
 class _AppstoneMarkPainter extends CustomPainter {
   _AppstoneMarkPainter({required this.tileColor, required this.markColor});
 
@@ -51,40 +96,12 @@ class _AppstoneMarkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Everything is authored against a 512-unit box, then scaled to fit, so the
-    // stroke weight and corner radius keep the same proportions at every size.
-    final s = size.width / 512.0;
-    Offset p(double x, double y) => Offset(x * s, y * s);
-
-    if (tileColor != null) {
-      final tile = Paint()
-        ..color = tileColor!
-        ..isAntiAlias = true;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(116 * s)),
-        tile,
-      );
-    }
-
-    final stroke = Paint()
-      ..color = markColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 44 * s
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..isAntiAlias = true;
-
-    // Flat "capstone" apex (236->276) with the two legs, then the crossbar -
-    // matches the "M236 132 H276 L360 388 M236 132 L152 388" + "M190 300 H322"
-    // paths in the SVG asset.
-    final a = Path()
-      ..moveTo(p(236, 132).dx, p(236, 132).dy)
-      ..lineTo(p(276, 132).dx, p(276, 132).dy)
-      ..lineTo(p(360, 388).dx, p(360, 388).dy)
-      ..moveTo(p(236, 132).dx, p(236, 132).dy)
-      ..lineTo(p(152, 388).dx, p(152, 388).dy);
-    canvas.drawPath(a, stroke);
-    canvas.drawLine(p(190, 300), p(322, 300), stroke);
+    paintAppstoneMark(
+      canvas,
+      size,
+      tileColor: tileColor,
+      markColor: markColor,
+    );
   }
 
   @override
