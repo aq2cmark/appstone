@@ -22,8 +22,6 @@ class TitleDefenseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DefensePracticeSessionScreen(
       title: 'Title Defense',
-      panelName: 'Dr. Santos',
-      panelRole: 'Panel Member',
       maxQuestions: 8,
       // Conceptual questions: 3 minutes each is enough to type a solid answer.
       secondsPerQuestion: 180,
@@ -45,8 +43,6 @@ class OralDefenseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DefensePracticeSessionScreen(
       title: 'Oral Defense',
-      panelName: 'Prof. Reyes',
-      panelRole: 'Technical Panel',
       maxQuestions: 15,
       // Technical explanations need more room than title defense.
       secondsPerQuestion: 240,
@@ -73,8 +69,6 @@ class FinalDefenseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const DefensePracticeSessionScreen(
       title: 'Final Defense',
-      panelName: 'Dr. Mendoza',
-      panelRole: 'Final Panel',
       maxQuestions: 20,
       // The deepest questions get the most time.
       secondsPerQuestion: 300,
@@ -117,16 +111,12 @@ class DefensePracticeSessionScreen extends StatefulWidget {
   const DefensePracticeSessionScreen({
     super.key,
     required this.title,
-    required this.panelName,
-    required this.panelRole,
     required this.questions,
     required this.maxQuestions,
     required this.secondsPerQuestion,
   });
 
   final String title;
-  final String panelName;
-  final String panelRole;
   final List<String> questions;
   final int maxQuestions;
   // Time allowed per main panel question. Harder defense types get more time;
@@ -778,8 +768,6 @@ class _DefensePracticeSessionScreenState
         MaterialPageRoute(
           builder: (_) => DefenseResultsScreen(
             title: widget.title,
-            panelName: widget.panelName,
-            panelRole: widget.panelRole,
             questions: widget.questions,
             maxQuestions: widget.maxQuestions,
             secondsPerQuestion: widget.secondsPerQuestion,

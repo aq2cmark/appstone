@@ -11,8 +11,6 @@ class DefenseResultsScreen extends StatelessWidget {
   const DefenseResultsScreen({
     super.key,
     required this.title,
-    required this.panelName,
-    required this.panelRole,
     required this.questions,
     required this.maxQuestions,
     required this.secondsPerQuestion,
@@ -21,8 +19,6 @@ class DefenseResultsScreen extends StatelessWidget {
   });
 
   final String title;
-  final String panelName;
-  final String panelRole;
   final List<String> questions;
   final int maxQuestions;
   // Carried through so "Practice Again" starts with the same question timer.
@@ -256,8 +252,6 @@ class DefenseResultsScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => DefensePracticeSessionScreen(
           title: title,
-          panelName: panelName,
-          panelRole: panelRole,
           questions: questions,
           maxQuestions: maxQuestions,
           secondsPerQuestion: secondsPerQuestion,
