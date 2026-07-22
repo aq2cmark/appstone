@@ -4,6 +4,7 @@ import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/dashboard_screen.dart';
 import 'package:appstone/services/admin_repository.dart';
 import 'package:appstone/services/functions_service.dart';
+import 'package:appstone/widgets/appstone_logo.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show TextInput;
@@ -86,18 +87,10 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(Icons.menu_book, color: Colors.white, size: 48),
-                  ),
+                  const AppstoneLogo(size: 80),
                   const SizedBox(height: 12),
                   const Text(
-                    'APPSTONE',
+                    'Appstone',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),

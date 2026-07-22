@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import 'docx_layout_checker.dart';
 import 'document_text_extractor.dart';
+import 'paper_check_history_service.dart';
 import 'paper_checker_service.dart';
 
 // Holds the state of the current (or most recent) paper check ABOVE the screen,
@@ -16,6 +17,7 @@ class PaperCheckController extends ChangeNotifier {
   final _extractor = DocumentTextExtractor();
   final _service = PaperCheckerService();
   final _layoutChecker = DocxLayoutChecker();
+  final _history = PaperCheckHistoryService();
 
   bool _running = false;
   String? _fileName;
@@ -33,8 +35,15 @@ class PaperCheckController extends ChangeNotifier {
   bool get hasResult => _review != null || _error != null;
 
   // Starts checking [file] in the background. Safe to call away from any screen;
-  // listeners (the screen, when open) rebuild as it progresses.
-  Future<void> start(PlatformFile file) async {
+  // listeners (the screen, when open) rebuild as it progresses. The student
+  // identity is passed in (read from prefs by the screen, as defense practice
+  // does) so a finished check can be logged to history without this service
+  // layer reaching into SharedPreferences itself.
+  Future<void> start(
+    PlatformFile file, {
+    String? groupId,
+    String? studentId,
+  }) async {
     if (_running) return;
     _running = true;
     _fileName = file.name;
@@ -62,11 +71,50 @@ class PaperCheckController extends ChangeNotifier {
 
       final text = await _extractor.extract(file);
       _review = await _service.checkPaper(paperText: text);
+      // Log this finished check so the student can compare it against earlier
+      // ones. Kept inside the try (only successful checks are worth saving) but
+      // self-contained so a history failure never becomes a check error.
+      await _saveToHistory(file, groupId, studentId);
     } catch (error) {
       _error = _friendlyError(error);
     } finally {
       _running = false;
       notifyListeners();
+    }
+  }
+
+  // Best-effort write to paper check history. Needs a completed review and a
+  // signed-in student; any failure is swallowed so the on-screen result stands.
+  Future<void> _saveToHistory(
+    PlatformFile file,
+    String? groupId,
+    String? studentId,
+  ) async {
+    final review = _review;
+    if (review == null || groupId == null || studentId == null) return;
+    try {
+      await _history.saveCheck(
+        groupId: groupId,
+        studentId: studentId,
+        fileName: file.name,
+        totalScore: review.totalScore,
+        maxScore: review.maxScore,
+        verdict: review.verdict,
+        summary: review.summary,
+        sections: review.sections
+            .map(
+              (s) => PaperCheckSectionScore(
+                name: s.name,
+                score: s.score,
+                max: s.max,
+              ),
+            )
+            .toList(),
+        layoutPassCount: _layout?.passCount,
+        layoutTotal: _layout?.total,
+      );
+    } catch (_) {
+      // History is a nice-to-have; the finished result is already on screen.
     }
   }
 

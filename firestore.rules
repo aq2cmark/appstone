@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// AppStone Firestore security rules.
+// Appstone Firestore security rules.
 //
 // Context that shapes these rules:
 //  - Admins are Firebase Auth accounts, gated by a matching active doc in the
@@ -89,6 +89,15 @@ service cloud.firestore {
     // practice records requires a login. Records are append-only from the app;
     // only admins can clean them up.
     match /practice_sessions/{sessionId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if isActiveAdmin();
+    }
+
+    // --- Paper checker history ----------------------------------------------
+    // Same shape as practice history: a student's saved manuscript checks,
+    // used to compare a paper against its earlier checks. Append-only from the
+    // app; only admins can clean them up.
+    match /paper_checks/{checkId} {
       allow read, create: if request.auth != null;
       allow update, delete: if isActiveAdmin();
     }

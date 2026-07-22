@@ -433,7 +433,7 @@ class _DefensePracticeSessionScreenState
             child: const Text('Stay'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Leave'),
           ),
@@ -449,7 +449,7 @@ class _DefensePracticeSessionScreenState
     final minutes = secondsLeft ~/ 60;
     final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
     final color = inGrace
-        ? Colors.red
+        ? AppColors.danger
         : secondsLeft <= 30
         ? AppColors.gold
         : AppColors.primary;
@@ -481,21 +481,21 @@ class _DefensePracticeSessionScreenState
 
   Widget buildGraceBanner() {
     return Card(
-      color: Colors.red.withValues(alpha: 0.08),
+      color: AppColors.danger.withValues(alpha: 0.08),
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.red),
+            const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 "Time's up! Your answer submits automatically in "
                 '$secondsLeft second${secondsLeft == 1 ? '' : 's'}.',
                 style: const TextStyle(
-                  color: Colors.red,
+                  color: AppColors.danger,
                   fontWeight: FontWeight.bold,
                 ),
               ),

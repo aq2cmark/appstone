@@ -1,6 +1,6 @@
 {
-    "name": "appstone",
-    "short_name": "appstone",
+    "name": "Appstone",
+    "short_name": "Appstone",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

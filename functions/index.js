@@ -1,4 +1,4 @@
-// AppStone Cloud Functions - the app's secure "back room".
+// Appstone Cloud Functions - the app's secure "back room".
 //
 // Everything privileged lives here, never in the app:
 //   • nararouter              - proxies AI calls to NaraRouter (Phase 1)

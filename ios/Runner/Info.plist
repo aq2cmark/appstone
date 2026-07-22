@@ -25,9 +25,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>AppStone uses the microphone so students can answer defense practice questions by voice.</string>
+	<string>Appstone uses the microphone so students can answer defense practice questions by voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>AppStone uses speech recognition to turn spoken defense answers into text.</string>
+	<string>Appstone uses speech recognition to turn spoken defense answers into text.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

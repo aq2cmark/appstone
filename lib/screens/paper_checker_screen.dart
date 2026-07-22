@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_colors.dart';
 import '../services/docx_layout_checker.dart';
 import '../services/paper_check_controller.dart';
 import '../services/paper_checker_service.dart';
+import 'auth_gate.dart';
 
 // Paper Checker: uploads a capstone manuscript, extracts its text, and grades
 // it against Section 8.3 of the Capstone Manual (the 50-point manuscript
@@ -34,6 +36,14 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         title: const Text('Paper Checker'),
+        actions: [
+          IconButton(
+            tooltip: 'Check history',
+            onPressed: () =>
+                Navigator.pushNamed(context, '/paper-check-history'),
+            icon: const Icon(Icons.history),
+          ),
+        ],
       ),
       body: ListenableBuilder(
         listenable: _controller,
@@ -507,9 +517,16 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       );
       return;
     }
+    // The student identity is read here (as defense practice does) and handed
+    // to the controller so the finished check can be saved to history.
+    final prefs = await SharedPreferences.getInstance();
     // Runs in the shared controller, so the check keeps going (and the result
     // stays) even if the student leaves this screen and comes back.
-    _controller.start(file);
+    _controller.start(
+      file,
+      groupId: prefs.getString(groupIdPrefsKey),
+      studentId: prefs.getString(studentIdPrefsKey),
+    );
   }
 
   Color _scoreColor(double ratio) {

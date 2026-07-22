@@ -19,7 +19,7 @@ class CredentialsPrinter {
         margin: const pw.EdgeInsets.all(28),
         build: (context) => [
           pw.Text(
-            'AppStone - Student Credentials',
+            'Appstone - Student Credentials',
             style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(

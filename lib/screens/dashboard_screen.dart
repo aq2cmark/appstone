@@ -21,6 +21,11 @@ const dashboardContentWidth = 1360.0;
 // enough vertical room for the magnified card.
 const _dockBaseHeight = 272.0;
 const _hoverPeakScale = 1.16;
+// Hover lift for the wrapped/touch grid. It can't magnify a card into a
+// reserved row the way the single-row dock does, so a hovered card here grows
+// only slightly (and raises its shadow) - kept small enough that the enlarged
+// card never crosses the 20px gap and overlaps its neighbours.
+const _reflowHoverScale = 1.05;
 
 // Student dashboard after login.
 // It receives the student and group names from LoginPage after credentials pass.
@@ -181,17 +186,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           spacing: gap,
           runSpacing: gap,
           children: [
-            for (final feature in _features)
-              AppFeatureCard(
-                title: feature.title,
-                subtitle: feature.subtitle,
-                icon: feature.icon,
-                color: feature.color,
-                width: cardWidth,
-                height: _dockBaseHeight,
-                locked: feature.requiresPremium && !widget.isPremium,
-                onTap: () => _openFeature(context, feature),
-              ),
+            for (var i = 0; i < _features.length; i++)
+              _buildReflowCard(context, i, cardWidth),
           ],
         );
       },
@@ -243,6 +239,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
               width: cardWidth,
               height: _dockBaseHeight,
               elevated: hovered == index,
+              locked: feature.requiresPremium && !widget.isPremium,
+              onTap: () => _openFeature(context, feature),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // The wrapped/touch grid's counterpart to a dock card. There's no reserved
+  // row to magnify into and neighbours can't shrink meaningfully in two
+  // dimensions, so hovering just lifts this one card: a small scale-up plus the
+  // raised feature-coloured shadow. Same MouseRegion + AnimatedScale machinery
+  // (and shared hovered-index notifier) as the dock, so only the hovered card
+  // rebuilds and the frames run on the GPU.
+  Widget _buildReflowCard(BuildContext context, int index, double cardWidth) {
+    final feature = _features[index];
+    return MouseRegion(
+      onEnter: (_) => _hoveredFeature.value = index,
+      onExit: (_) {
+        if (_hoveredFeature.value == index) _hoveredFeature.value = null;
+      },
+      child: ValueListenableBuilder<int?>(
+        valueListenable: _hoveredFeature,
+        builder: (context, hovered, _) {
+          final isHovered = hovered == index;
+          return AnimatedScale(
+            scale: isHovered ? _reflowHoverScale : 1.0,
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            child: AppFeatureCard(
+              title: feature.title,
+              subtitle: feature.subtitle,
+              icon: feature.icon,
+              color: feature.color,
+              width: cardWidth,
+              height: _dockBaseHeight,
+              elevated: isHovered,
               locked: feature.requiresPremium && !widget.isPremium,
               onTap: () => _openFeature(context, feature),
             ),

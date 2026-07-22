@@ -536,7 +536,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                           deleteStudent(group, student),
                                       icon: const Icon(
                                         Icons.delete,
-                                        color: Colors.red,
+                                        color: AppColors.danger,
                                       ),
                                     ),
                                   ],
@@ -807,7 +807,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -838,7 +838,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),

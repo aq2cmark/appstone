@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "description": "Cloud Functions for AppStone (AI proxy + admin actions)",
+  "description": "Cloud Functions for Appstone (AI proxy + admin actions)",
   "engines": {
     "node": "20"
   },

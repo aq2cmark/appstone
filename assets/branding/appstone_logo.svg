@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Appstone">
+  <!-- Appstone app mark: a maroon rounded-square tile (the app's own IconBadge
+       language) with a capstone "A" - a flat-topped apex so the letter also
+       reads as the top stone of a structure. Single-colour, no accent line. -->
+  <rect width="512" height="512" rx="116" fill="#8B1A1A"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M236 132 H276 L360 388 M236 132 L152 388"/>
+    <path d="M190 300 H322"/>
+  </g>
+</svg>

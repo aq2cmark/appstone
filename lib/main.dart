@@ -8,6 +8,7 @@ import 'package:appstone/screens/title_defense_screen.dart';
 import 'package:appstone/screens/title_generator_screen.dart';
 import 'package:appstone/screens/ai_workflow_screen.dart';
 import 'package:appstone/screens/paper_checker_screen.dart';
+import 'package:appstone/screens/paper_check_history_screen.dart';
 import 'package:appstone/widgets/auth_guard.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -29,7 +30,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'AppStone',
+      title: 'Appstone',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         scaffoldBackgroundColor: AppColors.background,
@@ -152,6 +153,8 @@ class MainApp extends StatelessWidget {
             const PremiumGuard(child: SessionHistoryScreen()),
         '/ai-workflow': (_) => const PremiumGuard(child: AIWorkflowScreen()),
         '/paper-checker': (_) => const PremiumGuard(child: PaperCheckerScreen()),
+        '/paper-check-history': (_) =>
+            const PremiumGuard(child: PaperCheckHistoryScreen()),
       },
     );
   }

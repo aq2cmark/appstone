@@ -110,7 +110,7 @@ class AdminManagementPage extends StatelessWidget {
                   admin.isOwner ? AppColors.gold : AppColors.primary,
                 ),
                 if (!admin.active)
-                  _chip('Deactivated', Colors.red)
+                  _chip('Deactivated', AppColors.danger)
                 else if (admin.isPending)
                   _chip('Invited - not signed up', AppColors.grey)
                 else
@@ -140,7 +140,7 @@ class AdminManagementPage extends StatelessWidget {
                   if (admin.active)
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
+                        foregroundColor: AppColors.danger,
                       ),
                       onPressed: () => _setActive(context, admin, false),
                       icon: const Icon(Icons.block, size: 18),
@@ -158,7 +158,7 @@ class AdminManagementPage extends StatelessWidget {
                   IconButton(
                     tooltip: 'Remove record',
                     onPressed: () => _delete(context, admin),
-                    icon: const Icon(Icons.delete, color: Colors.red),
+                    icon: const Icon(Icons.delete, color: AppColors.danger),
                   ),
                 ],
               ),
@@ -362,7 +362,7 @@ class AdminManagementPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: Text(action),
           ),
