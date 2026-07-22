@@ -321,26 +321,10 @@ class _DefensePracticeSessionScreenState
                   ),
                   const SizedBox(height: 16),
                   if (inGrace) buildGraceBanner(),
-                  Card(
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: AppColors.primary,
-                        child: Text(
-                          'PM',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                      title: Text(widget.panelName),
-                      subtitle: Text(widget.panelRole),
-                    ),
-                  ),
                   buildQuestionCard(),
+                  const SizedBox(height: 12),
                   buildTipsCard(),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: answerController,
                     maxLines: 5,
@@ -516,7 +500,7 @@ class _DefensePracticeSessionScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              isFollowUp ? 'FOLLOW-UP QUESTION' : 'PANEL QUESTION',
+              isFollowUp ? 'FOLLOW-UP QUESTION' : 'QUESTION',
               style: TextStyle(
                 color: isFollowUp ? AppColors.gold : AppColors.primary,
                 fontWeight: FontWeight.bold,

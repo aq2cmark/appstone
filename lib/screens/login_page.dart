@@ -87,13 +87,8 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const AppstoneLogo(size: 80),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Appstone',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
+                  const AppstoneLockup(markSize: 80, wordmarkSize: 28),
+                  const SizedBox(height: 8),
                   const Text(
                     'Dominican College of Tarlac INC',
                     textAlign: TextAlign.center,
