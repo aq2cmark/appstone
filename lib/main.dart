@@ -2,6 +2,7 @@ import 'package:appstone/app_colors.dart';
 import 'package:appstone/firebase_options.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/capstone_manual_screen.dart';
+import 'package:appstone/screens/defense_context_screen.dart';
 import 'package:appstone/screens/defense_practice_screen.dart';
 import 'package:appstone/screens/session_history_screen.dart';
 import 'package:appstone/screens/title_defense_screen.dart';
@@ -146,6 +147,8 @@ class MainApp extends StatelessWidget {
             const AuthGuard(child: TitleGeneratorScreen()),
         '/defense-practice': (_) =>
             const PremiumGuard(child: DefensePracticeScreen()),
+        '/defense-context': (_) =>
+            const PremiumGuard(child: DefenseContextScreen()),
         '/title-defense': (_) => const PremiumGuard(child: TitleDefenseScreen()),
         '/oral-defense': (_) => const PremiumGuard(child: OralDefenseScreen()),
         '/final-defense': (_) => const PremiumGuard(child: FinalDefenseScreen()),

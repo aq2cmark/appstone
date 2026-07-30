@@ -135,7 +135,6 @@ class DefenseResultsScreen extends StatelessWidget {
                           const SizedBox(height: 16),
                           buildMetricRow('Clarity', score.clarity),
                           buildMetricRow('Technical', score.technical),
-                          buildMetricRow('Confidence', score.confidence),
                           buildMetricRow('Completeness', score.completeness),
                           buildMetricRow('Presentation', score.presentation),
                         ],
@@ -196,10 +195,6 @@ class DefenseResultsScreen extends StatelessWidget {
                           buildRubricRow(
                             'Technical',
                             'The depth and accuracy of your technical explanations.',
-                          ),
-                          buildRubricRow(
-                            'Confidence',
-                            'How confident and decisive you sounded while answering.',
                           ),
                           buildRubricRow(
                             'Completeness',

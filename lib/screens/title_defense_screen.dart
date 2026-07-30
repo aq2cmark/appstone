@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../app_colors.dart';
 import '../services/defense_ai_service.dart';
+import '../services/defense_context_service.dart';
 import '../services/recording_store.dart';
 import '../services/speech_transcription_service.dart';
 import '../services/practice_history_service.dart';
@@ -134,6 +135,14 @@ class _DefensePracticeSessionScreenState
   final recorder = AudioRecorder();
   final ai = DefenseAiService();
   final history = PracticeHistoryService();
+  final contextService = DefenseContextService();
+
+  // The student's project description, saved from the "Add More Context" screen
+  // on the Defense Practice menu. Loaded once when the session opens and sent
+  // with every AI call so the panel's follow-ups and the final score are about
+  // their actual capstone. Empty when they never added any - the session then
+  // behaves exactly as it did before.
+  DefenseContext projectContext = const DefenseContext();
   // Shares the run's session id, so every answer transcribed during this
   // practice counts inside the run's single session instead of spending a
   // day's allowance of its own.
@@ -193,7 +202,17 @@ class _DefensePracticeSessionScreenState
   void initState() {
     super.initState();
     sessionStart = DateTime.now();
+    loadProjectContext();
     startQuestionTimer();
+  }
+
+  // Reads on-device in a few milliseconds, and the first thing it's needed for is
+  // the first submitted answer - so the session starts immediately rather than
+  // showing a loading screen before question one.
+  Future<void> loadProjectContext() async {
+    final saved = await contextService.load();
+    if (!mounted) return;
+    setState(() => projectContext = saved);
   }
 
   @override
@@ -310,6 +329,7 @@ class _DefensePracticeSessionScreenState
                     color: AppColors.primary,
                   ),
                   const SizedBox(height: 16),
+                  if (projectContext.isNotEmpty) buildContextNotice(),
                   if (inGrace) buildGraceBanner(),
                   buildQuestionCard(),
                   const SizedBox(height: 12),
@@ -449,6 +469,38 @@ class _DefensePracticeSessionScreenState
             style: TextStyle(color: color, fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+
+  // Reassures the student that the context they wrote is actually in play, so a
+  // project-specific follow-up doesn't come as a surprise. Only shown when there
+  // is context to use.
+  Widget buildContextNotice() {
+    final title = projectContext.projectTitle.trim();
+    return Card(
+      color: AppColors.primary.withValues(alpha: 0.06),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title.isEmpty
+                    ? 'The panel is using your saved project context.'
+                    : 'The panel is asking about your project: $title',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -704,6 +756,7 @@ class _DefensePracticeSessionScreenState
         answer: answer,
         followUpsSoFarOnTopic: followUpsOnTopic,
         maxFollowUpsPerTopic: maxFollowUpsPerTopic,
+        projectContext: projectContext.promptBlock,
       );
       if (!mounted) return;
 
@@ -759,6 +812,7 @@ class _DefensePracticeSessionScreenState
       final score = await ai.scoreSession(
         panelTitle: widget.title,
         exchanges: exchanges,
+        projectContext: projectContext.promptBlock,
       );
       if (!mounted) return;
       await saveSessionHistory(score);
