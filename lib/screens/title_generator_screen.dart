@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app_colors.dart';
 import '../services/title_generator_service.dart';
+import '../theme/app_typography.dart';
 
 // The fields a capstone can sit in. Every chip is tagged with the domains it
 // belongs to, which is what keeps a set of picks coherent: "Healthcare Workers"
@@ -49,7 +50,23 @@ const double _chipSpacing = 8;
 const double _chipRunSpacing = 8;
 const Duration _chipMotion = Duration(milliseconds: 260);
 const Curve _chipCurve = Curves.easeOutCubic;
-const TextStyle _chipLabelStyle = TextStyle(fontSize: 14);
+
+// The font is pinned here on purpose, and this is load-bearing.
+//
+// _chipWidth() below measures labels with a TextPainter using this exact
+// style, while _FilterChip renders them with it. If the style leaves the font
+// unset, the two disagree: the painter falls back to the platform default,
+// but the rendered Text merges onto DefaultTextStyle and picks up the theme's
+// family instead. The chip then paints wider than the layout reserved for it
+// and silently overflows. Naming the family (and the weight) keeps the
+// measurement and the paint on the same font.
+const TextStyle _chipLabelStyle = TextStyle(
+  fontFamily: AppTypography.fontFamily,
+  fontFamilyFallback: AppTypography.fontFamilyFallback,
+  fontSize: 14,
+  fontWeight: AppTypography.medium,
+  fontVariations: <FontVariation>[FontVariation('wght', 500)],
+);
 
 // Chip labels are a fixed list, so measuring each one once is plenty.
 final Map<String, double> _chipWidthCache = {};

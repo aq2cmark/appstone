@@ -1,5 +1,5 @@
 name: appstone
-description: "A new Flutter project."
+description: "Appstone - a web and mobile application for capstone guidance at the College of Computer Studies, Dominican College of Tarlac."
 publish_to: 'none'
 version: 0.1.0
 
@@ -27,6 +27,15 @@ dependencies:
   record: ^6.2.1
   path_provider: ^2.1.5
   web: ^1.1.1
+  # UI-only additions for the frontend overhaul.
+  # flutter_animate: declarative entrance/stagger/shimmer motion, so 20+ screens
+  #   get a consistent motion language without hand-rolling AnimationControllers.
+  # fl_chart: the defense-results radar and score visualisations.
+  # There is deliberately no google_fonts: Plus Jakarta Sans is bundled from
+  # assets/fonts/ instead, so the app renders correctly offline, on a slow
+  # campus connection, and deterministically inside widget tests.
+  flutter_animate: ^4.5.0
+  fl_chart: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -36,6 +45,20 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    # The branding files were previously only inputs to flutter_launcher_icons
+    # and were never bundled into the app itself.
+    - assets/branding/
+
+  fonts:
+    # Plus Jakarta Sans ships as a single variable font with a continuous wght
+    # axis (200-800) - one 172 KB file instead of five static weights, which
+    # matters in a ~26 MB web build. Weights are selected in code via
+    # TextStyle.fontVariations; see lib/theme/app_typography.dart.
+    - family: Plus Jakarta Sans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
 
 # App launcher icons + web favicon, generated from the Appstone mark.
 # Sources are rendered from the same painter as the in-app logo

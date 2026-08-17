@@ -21,7 +21,8 @@ class AIWorkflowScreen extends StatefulWidget {
 }
 
 class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
-  static const _prefsKey = 'workflow_plan_v1';
+  // Shared with the Home screen's plan preview - see models/workflow_plan.dart.
+  static const _prefsKey = workflowPlanPrefsKey;
 
   final _extractor = DocumentTextExtractor();
   final _service = WorkflowService();

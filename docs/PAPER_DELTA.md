@@ -10,7 +10,8 @@
 |---|---|
 | Paper revision | `NEW APPSTONE.docx` (revision pending — system refinement first) |
 | Overhaul started | 2026-08-17 |
-| Status | Phase 0 complete · Phases 1–5 pending |
+| Status | Phases 0–1 complete · Phases 2–5 pending |
+| Verification | `flutter analyze` clean (2 pre-existing deprecations in `admin_portal_page.dart`) · all 65 tests passing · `flutter build web --release` succeeds |
 
 ---
 
@@ -34,10 +35,10 @@ Ordered by document section. This is the part you work from.
 | §1.3.2 / §1.4.1 | Lists 7 modules (auth, admin, manual, title generator, defense practice ×3, workflow, paper checker) | Same 7 modules, unchanged in scope | None — scope statement is still accurate | ✅ |
 | §1.4.2.I (Mobile Hardware Limitations) | Android 10+, iOS 14+ | Accurate for the installed PWA. Native store builds are *not* release-ready (bundle IDs still `com.example.appstone`, Android release signs with debug keys) | Consider stating explicitly that distribution is via PWA install, not app stores | ⬜ |
 | §1.4.2.J (Web Software Limitations) | "Performance may vary depending on device specifications and browser compatibility" | Can now be stated concretely: responsive from 320 px to 1920 px, four breakpoints, light + dark theme | Rewrite with the actual breakpoint table | ⬜ |
-| §4.4.1 (Colors) | Blue **#2563EB** is the main color; module colors green #22C55E, orange #F97316, purple #9333EA, red #EF4444, cyan #06B6D4, indigo #4F46E5, teal #0D9488 | Maroon **#8B1A1A** is the brand color (matches the Appstone logo, launcher icons, favicon, adaptive icon background and PWA theme color). Module accents are a new maroon-compatible set | **Rewrite the whole colour paragraph. Replace the colour swatch figures.** See Section 1a below for the exact palette to document | ⬜ |
-| §4.4.1 (Colors) | Swatch figures list #FF0000, #808080, #FFFFFF, #000000 | Those four swatches do not correspond to anything in the system | Replace the swatch block entirely | ⬜ |
-| §4.4.1 (Fonts) | Font stack "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif", base 16 px, two weights (400 normal, 500 medium) | **Plus Jakarta Sans**, bundled as an app asset (no runtime download), with a 10-step type scale and weights 400–800 | Rewrite the typography paragraphs | ⬜ |
-| §4.4.1 (Fonts) | Figures 19–21 are Segoe UI / Helvetica Neue / Roboto specimens; Figures 21–22 are Arial / Sans Serif | Only one family is used | **Replace Figures 19–22 with a single Plus Jakarta Sans specimen + the type scale table** | ⬜ |
+| §4.4.1 (Colors) | Blue **#2563EB** is the main color; module colors green #22C55E, orange #F97316, purple #9333EA, red #EF4444, cyan #06B6D4, indigo #4F46E5, teal #0D9488 | Maroon **#8B1A1A** is the brand color (matches the Appstone logo, launcher icons, favicon, adaptive icon background and PWA theme color). Module accents are a new maroon-compatible set | **Rewrite the whole colour paragraph. Replace the colour swatch figures.** See Section 1a below for the exact palette to document | ✅ shipped, Phase 1 |
+| §4.4.1 (Colors) | Swatch figures list #FF0000, #808080, #FFFFFF, #000000 | Those four swatches do not correspond to anything in the system | Replace the swatch block entirely | ✅ shipped, Phase 1 |
+| §4.4.1 (Fonts) | Font stack "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif", base 16 px, two weights (400 normal, 500 medium) | **Plus Jakarta Sans**, bundled as an app asset (no runtime download), with a 13-step type scale and weights 400–800. The old stack is now the *fallback* | Rewrite the typography paragraphs — see Section 1b | ✅ shipped, Phase 1 |
+| §4.4.1 (Fonts) | Figures 19–21 are Segoe UI / Helvetica Neue / Roboto specimens; Figures 21–22 are Arial / Sans Serif | Only one family is used | **Replace Figures 19–22 with a single Plus Jakarta Sans specimen + the type scale table** | ✅ shipped, Phase 1 |
 | §4.4.1 (new) | *(nothing)* | Navigation architecture: adaptive shell — bottom navigation on phones, navigation rail on tablet/desktop | **Add a new subsection** | ⬜ |
 | §4.4.1 (new) | *(nothing)* | Light and dark theme with a user-facing toggle, persisted per device | **Add a new subsection** | ⬜ |
 | §B.3.7 (Performance Breakdown Dashboard) | Metrics listed as clarity, technical accuracy, **confidence**, completeness, presentation | The AI scores **clarity, technical, completeness, presentation** only. `defense_ai_service.dart` deliberately omits *confidence* — the model receives the student's typed/transcribed text, never audio, so it cannot honestly assess vocal confidence | 📄 **Correct the paper. Do not change the code.** Remove "confidence" or reword it as a limitation | ⬜ |
@@ -50,19 +51,70 @@ Ordered by document section. This is the part you work from.
 
 ### Section 1a — Palette to document in §4.4.1
 
-To be filled in with final hex values at the end of Phase 1.
+Final values. Source of truth is `lib/theme/app_colors.dart`. Light-theme hexes are given; the dark theme lightens accents so they stay legible on dark surfaces.
 
-| Role | Token | Hex | Used for |
+**Brand and status**
+
+| Role | Token | Light hex | Used for |
 |---|---|---|---|
-| Brand | `brand` | `#8B1A1A` | App chrome, headers, primary buttons, focus states |
-| Brand (dark) | `brandDark` | `#6B1414` | Pressed states, gradient depth |
-| Premium | `premium` | `#8B7020` | Premium badges and locks |
+| Brand | `brand` | `#8B1A1A` | App chrome, primary buttons, focus rings, active navigation |
+| Brand strong | `brandStrong` | `#6B1414` | Pressed states, depth |
+| Brand soft | `brandSoft` | `#F6EAEA` | Selected rows, navigation indicator |
+| Premium | `premium` | `#9A7A16` | Premium badges and locks |
+| Success | `success` | `#1B7F4B` | Passed checks, completed phases |
+| Warning | `warning` | `#B26A00` | Behind schedule, needs attention |
 | Danger | `danger` | `#C62828` | Destructive actions, time's-up |
-| Module — Capstone Manual | `moduleManual` | *TBD* | Manual cards and accents |
-| Module — Title Generator | `moduleTitleGen` | *TBD* | Title generator cards and accents |
-| Module — Defense Practice | `moduleDefense` | *TBD* | Defense cards and accents |
-| Module — AI Workflow | `moduleWorkflow` | *TBD* | Workflow cards and accents |
-| Module — Paper Checker | `modulePaper` | *TBD* | Paper checker cards and accents |
+| Info | `info` | `#1E5F8C` | Neutral notices |
+
+**Module accents** — each module owns a hue so the dashboard reads at a glance
+
+| Module | Token | Light hex |
+|---|---|---|
+| Capstone Manual | `moduleManual` | `#8B1A1A` |
+| Title Generator | `moduleTitleGen` | `#AD6A0B` |
+| Defense Practice | `moduleDefense` | `#9A2C4E` |
+| AI Workflow | `moduleWorkflow` | `#3B4B9A` |
+| Paper Checker | `modulePaper` | `#0F766E` |
+| — Title Defense mode | `titleDefense` | `#B4530A` |
+| — Oral Defense mode | `oralDefense` | `#6B3FA0` |
+| — Final Defense mode | `finalDefense` | `#A62B20` |
+
+**Neutrals** — warm-tinted rather than pure grey, so they sit with the maroon
+
+| Role | Light | Dark |
+|---|---|---|
+| Background | `#F5F3F0` | `#141110` |
+| Surface (cards) | `#FFFFFF` | `#1E1A19` |
+| Border | `#E3DDD6` | `#3A3331` |
+| Text primary | `#1A1614` | `#F5F1EE` |
+| Text secondary | `#6B625C` | `#B3A9A3` |
+
+### Section 1b — Typography to document in §4.4.1
+
+Source of truth is `lib/theme/app_typography.dart`.
+
+- **Family:** Plus Jakarta Sans, bundled at `assets/fonts/PlusJakartaSans-Variable.ttf`.
+- **Delivery:** a single *variable* font file (172 KB) with a continuous weight axis from 200 to 800, rather than five separate static weight files. One asset instead of five matters in a ~26 MB web build. Weights are selected in code through `TextStyle.fontVariations`.
+- **No runtime download.** The font ships inside the app bundle, so it renders correctly offline, on a slow campus connection, and deterministically inside widget tests.
+- **Fallback stack:** Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif — the stack the paper currently describes is now the *fallback*, which is worth saying explicitly in the revision.
+- **Weights used:** 400 regular, 500 medium, 600 semibold, 700 bold, 800 extrabold (the paper currently claims only 400 and 500).
+- **Scale:** 13 named steps replacing the 26 ad-hoc font sizes the old code used.
+
+| Step | Size | Weight | Used for |
+|---|---|---|---|
+| displayLarge | 40 | 800 | Score dials, hero numbers |
+| displayMedium | 32 | 700 | Large counters |
+| headlineLarge | 26 | 700 | Page hero titles |
+| headlineMedium | 22 | 700 | Major section titles |
+| headlineSmall | 19 | 600 | App bar titles, dialog titles |
+| titleLarge | 17 | 600 | Card titles |
+| titleMedium | 15 | 600 | List leads, form labels |
+| titleSmall | 13.5 | 600 | Dense titles |
+| bodyLarge | 16 | 400 | Primary reading copy |
+| bodyMedium | 14.5 | 400 | Default body |
+| bodySmall | 13 | 400 | Captions, metadata |
+| labelLarge | 15 | 600 | Buttons |
+| labelMedium / labelSmall / eyebrow | 13 / 11.5 / 11.5 | 500 / 500 / 700 | Chips, tabs, uppercase section markers |
 
 ---
 
@@ -121,7 +173,7 @@ Useful evidence for the paper's testing / QA discussion.
 
 | # | File | Defect | Status |
 |---|---|---|---|
-| D1 | `web/index.html` | **No `<meta name="viewport">` tag** — mobile browsers rendered the app at desktop width and scaled it down, defeating all responsive layout on mobile web | ⬜ |
+| D1 | `web/index.html` | No `<meta name="viewport">` tag in the HTML. **Corrected after verification:** this is *not* the critical bug it first appeared to be — the Flutter engine injects `width=device-width, initial-scale=1.0, maximum-scale=5.0` at runtime during bootstrap (confirmed in `build/web/main.dart.js`), so the running app is laid out correctly on mobile. The real, smaller issue is that the meta only exists *after* `main.dart.js` boots, which on a ~26 MB build over campus wifi is several seconds. Until then mobile browsers use the default ~980 px layout viewport, which mis-scales the pre-boot content in `index.html` (the PWA install button, the iOS tip, and the branded splash being added in Phase 5). Fix is to declare it explicitly in the HTML so it applies from first paint. | ⬜ |
 | D2 | `print_options_dialog.dart:97` | `SizedBox(width: 420)` inside an `AlertDialog` overflows on any device narrower than ~500 px (i.e. every phone) | ⬜ |
 | D3 | 6 dialog sites | Multi-field dialog contents were not scrollable — overflowed whenever the keyboard opened | ⬜ |
 | D4 | `ai_workflow_screen.dart:288` | Status `Row` with four unconstrained children and no `Flexible` — overflows on narrow screens or raised text scale | ⬜ |

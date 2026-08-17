@@ -69,13 +69,15 @@ abstract final class AppTheme {
       splashFactory: InkSparkle.splashFactory,
       highlightColor: c.brand.withValues(alpha: 0.06),
 
-      // Shared-axis page transitions replace Material's default per-platform
-      // behaviour, so navigation feels the same on web, Android and iOS.
+      // One page transition on every platform. The app is primarily a web
+      // build that also runs as an installed PWA on Android and iOS, so a
+      // platform-conditional transition would make the same URL animate
+      // differently depending on the device it was opened from.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),

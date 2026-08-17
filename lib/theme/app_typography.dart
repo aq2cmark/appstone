@@ -1,5 +1,3 @@
-import 'dart:ui' show FontVariation;
-
 import 'package:flutter/material.dart';
 
 /// The Appstone type scale.

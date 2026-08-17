@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io' show SocketException;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+// FirebaseException and FirebaseAuthException both arrive through this single
+// import - firebase_auth re-exports firebase_core's base types.
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 import 'document_text_extractor.dart';
 import 'student_import_service.dart';
