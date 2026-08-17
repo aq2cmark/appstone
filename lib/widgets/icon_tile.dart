@@ -4,7 +4,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
-import 'app_motion_widgets.dart';
 
 /// Solid rounded icon tile. Shared by the student home's feature cards and the
 /// admin portal's stat cards so both hubs use the same icon language.
