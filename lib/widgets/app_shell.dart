@@ -79,6 +79,45 @@ enum AppDestination {
   final bool requiresPremium;
 }
 
+/// Lets anything inside the shell switch destinations.
+///
+/// Home's feature cards use this so that opening a module from a card lands in
+/// exactly the same place as tapping its tab. Before, a card did
+/// `Navigator.pushNamed`, which stacked the screen *on top of* the shell - the
+/// navigation bar vanished and there was no back button, so the module was a
+/// dead end reachable only by the browser's back gesture.
+class AppShellScope extends InheritedWidget {
+  const AppShellScope({
+    super.key,
+    required this.go,
+    required this.current,
+    required super.child,
+  });
+
+  final ValueChanged<AppDestination> go;
+  final AppDestination current;
+
+  /// Null when there is no shell above - e.g. a screen opened directly by URL,
+  /// or the admin portal, which has its own chrome. Callers fall back to a
+  /// normal push in that case.
+  static AppShellScope? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppShellScope>();
+
+  /// The destination that owns [route], or null when the route is not one of
+  /// the five tabs and therefore has to be pushed.
+  static AppDestination? destinationForRoute(String route) => switch (route) {
+        '/capstone-manual' => AppDestination.manual,
+        '/defense-practice' => AppDestination.practice,
+        '/ai-workflow' => AppDestination.workflow,
+        '/paper-checker' => AppDestination.checker,
+        _ => null,
+      };
+
+  @override
+  bool updateShouldNotify(AppShellScope oldWidget) =>
+      oldWidget.current != current;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
@@ -130,11 +169,28 @@ class _AppShellState extends State<AppShell> {
     setState(() => _index = index);
   }
 
+  void _goTo(AppDestination destination) {
+    // Anything stacked on top of the shell (a defense session, a results
+    // screen) is dismissed first, so switching module never leaves a stale
+    // page hidden behind the one being shown.
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) navigator.popUntil((route) => route.isFirst);
+    _select(AppDestination.values.indexOf(destination));
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final breakpoint = context.breakpoint;
 
+    return AppShellScope(
+      go: _goTo,
+      current: AppDestination.values[_index],
+      child: _buildScaffold(colors, breakpoint),
+    );
+  }
+
+  Widget _buildScaffold(AppColors colors, AppBreakpoint breakpoint) {
     return Scaffold(
       backgroundColor: colors.background,
       body: Row(

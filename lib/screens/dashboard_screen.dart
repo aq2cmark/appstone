@@ -565,7 +565,21 @@ class _HomeViewState extends State<HomeView> {
     _open(feature.route);
   }
 
+  /// Opens a module.
+  ///
+  /// Four of the five modules are shell destinations, so they switch tabs -
+  /// landing in exactly the same place as tapping the tab, with the navigation
+  /// bar still there. Anything else (the Title Generator) is pushed, and gets a
+  /// back button automatically because it can pop.
   Future<void> _open(String route) async {
+    final destination = AppShellScope.destinationForRoute(route);
+    final shell = AppShellScope.of(context);
+
+    if (destination != null && shell != null) {
+      shell.go(destination);
+      return;
+    }
+
     await Navigator.pushNamed(context, route);
     // Coming back from a feature is the moment the summary is most likely to be
     // stale - a finished practice session or a new paper check just landed.

@@ -94,7 +94,6 @@ class _DefensePracticeScreenState extends State<DefensePracticeScreen> {
       title: 'Defense Practice',
       subtitle: 'Practice answering, timed questions',
       accent: colors.moduleDefense,
-      automaticallyImplyLeading: false,
       actions: <Widget>[
         IconButton(
           tooltip: 'Session history',

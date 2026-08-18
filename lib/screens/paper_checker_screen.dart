@@ -51,7 +51,6 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
           subtitle: 'Graded against the manuscript rubric',
           accent: colors.modulePaper,
           maxContentWidth: AppContentWidth.wide,
-          automaticallyImplyLeading: false,
           actions: <Widget>[
             if (review != null)
               IconButton(
