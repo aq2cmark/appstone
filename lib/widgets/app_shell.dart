@@ -209,13 +209,23 @@ class _AppShellState extends State<AppShell> {
               index: _index,
               children: <Widget>[
                 for (var i = 0; i < AppDestination.values.length; i++)
-                  // IndexedStack builds every child, so untouched destinations
-                  // stay an empty box until they are first selected.
-                  if (_built[i] != null ||
-                      i == _index ||
-                      (AppDestination.values[i].requiresPremium &&
-                          !widget.isPremium))
-                    _destination(i)
+                  // IndexedStack lays out every child and keeps it alive; it
+                  // just doesn't paint the ones that aren't selected. So two
+                  // things need handling here.
+                  //
+                  // First, a destination stays an empty box until it has been
+                  // opened at least once - otherwise every screen would run its
+                  // initState and Firestore reads at launch.
+                  //
+                  // Second, TickerMode stops animations in the tabs you cannot
+                  // see. Without it a shimmering skeleton or a breathing empty
+                  // state in a background tab animates forever, burning frames
+                  // and battery behind a screen nobody is looking at.
+                  if (_built[i] != null || i == _index)
+                    TickerMode(
+                      enabled: i == _index,
+                      child: _destination(i),
+                    )
                   else
                     const SizedBox.shrink(),
               ],

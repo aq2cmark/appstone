@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_motion_widgets.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/practice_history_service.dart';
 import 'auth_gate.dart';
@@ -152,20 +153,27 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     final visible = _visibleRecords;
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: [
+      // Two steps (controls, then the whole card list) rather than one per
+      // card: re-filtering shouldn't replay a growing stagger chain, and this
+      // list can be long.
+      children: StaggeredEntrance.list(<Widget>[
         _buildControls(),
-        const SizedBox(height: 12),
-        if (visible.isEmpty)
-          Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'No sessions of this type yet.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.textSecondary),
-            ),
-          ),
-        for (final record in visible) _buildSessionCard(record),
-      ],
+        Column(
+          children: [
+            const SizedBox(height: 12),
+            if (visible.isEmpty)
+              Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No sessions of this type yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.textSecondary),
+                ),
+              ),
+            for (final record in visible) _buildSessionCard(record),
+          ],
+        ),
+      ]),
     );
   }
 

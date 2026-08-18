@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_motion.dart';
+import '../theme/app_spacing.dart';
 
 /// Motion primitives shared across the app.
 ///
@@ -31,10 +32,7 @@ class StaggeredEntrance extends StatefulWidget {
   final Duration duration;
 
   /// Wraps each of [children] so they arrive one after another.
-  static List<Widget> list(
-    List<Widget> children, {
-    double offset = 16,
-  }) {
+  static List<Widget> list(List<Widget> children, {double offset = 16}) {
     return <Widget>[
       for (var i = 0; i < children.length; i++)
         StaggeredEntrance(index: i, offset: offset, child: children[i]),
@@ -126,8 +124,8 @@ class _AnimatedPressableState extends State<AnimatedPressable> {
     final scale = !enabled
         ? 1.0
         : _pressed
-            ? widget.pressedScale
-            : (_hovered ? widget.hoveredScale : 1.0);
+        ? widget.pressedScale
+        : (_hovered ? widget.hoveredScale : 1.0);
 
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
@@ -221,9 +219,58 @@ class CountUpText extends StatelessWidget {
       tween: Tween<double>(begin: 0, end: value.toDouble()),
       duration: AppMotion.respect(context, duration),
       curve: AppMotion.enter,
-      builder: (context, animated, _) => Text(
-        '$prefix${animated.round()}$suffix',
-        style: style,
+      builder: (context, animated, _) =>
+          Text('$prefix${animated.round()}$suffix', style: style),
+    );
+  }
+}
+
+/// A [LinearProgressIndicator] that sweeps to its value instead of snapping.
+///
+/// Used for the rubric section bars, the workflow completion bar and the
+/// defense question tracker. A bar that jumps straight to its final width
+/// reads as a static graphic; one that fills draws the eye to the number it is
+/// reporting. Honours the reader's reduced-motion setting, in which case it
+/// paints the final value immediately.
+class AnimatedProgressBar extends StatelessWidget {
+  const AnimatedProgressBar({
+    super.key,
+    required this.value,
+    required this.color,
+    required this.backgroundColor,
+    this.minHeight = 8,
+    this.borderRadius = AppRadius.smAll,
+    this.duration = AppMotion.celebratory,
+  });
+
+  /// 0..1. Values outside that range are clamped rather than throwing.
+  final double value;
+  final Color color;
+  final Color backgroundColor;
+  final double minHeight;
+  final BorderRadius borderRadius;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = value.clamp(0.0, 1.0);
+    final reduced = AppMotion.reduced(context);
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: TweenAnimationBuilder<double>(
+        // Tweening from the current value (not from zero) means a bar that
+        // advances - the defense question tracker - slides forward by one step
+        // rather than rewinding to empty every time a question is answered.
+        tween: Tween<double>(begin: reduced ? target : 0, end: target),
+        duration: reduced ? Duration.zero : duration,
+        curve: AppMotion.enter,
+        builder: (context, animated, _) => LinearProgressIndicator(
+          value: animated,
+          minHeight: minHeight,
+          color: color,
+          backgroundColor: backgroundColor,
+        ),
       ),
     );
   }

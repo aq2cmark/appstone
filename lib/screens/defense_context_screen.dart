@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_motion_widgets.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/defense_context_service.dart';
 
@@ -146,7 +147,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                     constraints: const BoxConstraints(maxWidth: 760),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                      children: StaggeredEntrance.list(<Widget>[
                         _buildExplainer(),
                         const SizedBox(height: 16),
                         _buildField(
@@ -226,7 +227,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                             fontSize: 12,
                           ),
                         ),
-                      ],
+                      ]),
                     ),
                   ),
                 ),

@@ -506,14 +506,11 @@ class _DefensePracticeSessionScreenState
               ],
             ),
             AppSpacing.vLg,
-            ClipRRect(
-              borderRadius: AppRadius.smAll,
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 8,
-                color: colors.moduleDefense,
-                backgroundColor: colors.surfaceSunken,
-              ),
+            AnimatedProgressBar(
+              value: progress,
+              minHeight: 8,
+              color: colors.moduleDefense,
+              backgroundColor: colors.surfaceSunken,
             ),
           ],
         ),

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_motion_widgets.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_check_history_service.dart';
 import 'auth_gate.dart';
@@ -161,11 +162,15 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
 
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: [
+      children: StaggeredEntrance.list(<Widget>[
         _buildControls(),
-        const SizedBox(height: 12),
-        for (final record in _visibleRecords) _buildCheckCard(record),
-      ],
+        Column(
+          children: [
+            const SizedBox(height: 12),
+            for (final record in _visibleRecords) _buildCheckCard(record),
+          ],
+        ),
+      ]),
     );
   }
 

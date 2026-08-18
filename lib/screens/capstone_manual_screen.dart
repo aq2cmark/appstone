@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_motion_widgets.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_checker_service.dart'
     show manuscriptRubric, rubricMaxScore;
@@ -43,7 +44,10 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
       body: StudentListBody(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          // Two coarse steps rather than one per card: the section/result list
+          // can be long, and animating every single card would mean waiting
+          // out a growing delay chain each time the search query changes.
+          children: StaggeredEntrance.list(<Widget>[
             TextField(
               controller: _searchController,
               onChanged: (value) => setState(() => _query = value),
@@ -64,44 +68,51 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
-            if (results == null) ...[
-              const SectionLabel('CONTENTS'),
-              const SizedBox(height: 8),
-              for (final section in _sections)
-                ManualCard(
-                  number: section.number,
-                  title: section.title,
-                  subtitle:
-                      '${section.subtitle} - ${section.topics.length} topics',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ManualTopicListScreen(section: section),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                if (results == null) ...[
+                  const SectionLabel('CONTENTS'),
+                  const SizedBox(height: 8),
+                  for (final section in _sections)
+                    ManualCard(
+                      number: section.number,
+                      title: section.title,
+                      subtitle:
+                          '${section.subtitle} - ${section.topics.length} topics',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ManualTopicListScreen(section: section),
+                        ),
+                      ),
                     ),
+                ] else if (results.isEmpty) ...[
+                  _buildNoResults(query),
+                ] else ...[
+                  SectionLabel(
+                    '${results.length} RESULT${results.length == 1 ? '' : 'S'}',
                   ),
-                ),
-            ] else if (results.isEmpty) ...[
-              _buildNoResults(query),
-            ] else ...[
-              SectionLabel(
-                '${results.length} RESULT${results.length == 1 ? '' : 'S'}',
-              ),
-              const SizedBox(height: 8),
-              for (final result in results)
-                ManualCard(
-                  number: result.section.number,
-                  title: result.topic.title,
-                  subtitle: 'In ${result.section.title} - ${result.topic.subtitle}',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ManualDetailScreen(topic: result.topic),
+                  const SizedBox(height: 8),
+                  for (final result in results)
+                    ManualCard(
+                      number: result.section.number,
+                      title: result.topic.title,
+                      subtitle:
+                          'In ${result.section.title} - ${result.topic.subtitle}',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ManualDetailScreen(topic: result.topic),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-            ],
-          ],
+                ],
+              ],
+            ),
+          ]),
         ),
       ),
     );

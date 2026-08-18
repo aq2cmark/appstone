@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/friendly_error.dart';
+import '../../theme/app_motion.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../theme/app_typography.dart';
@@ -179,6 +180,7 @@ class AppEmptyView extends StatelessWidget {
       title: title,
       body: body,
       action: action,
+      breathe: true,
     );
   }
 }
@@ -191,6 +193,7 @@ class _CenteredMessage extends StatelessWidget {
     required this.title,
     required this.body,
     this.action,
+    this.breathe = false,
   });
 
   final IconData icon;
@@ -199,6 +202,11 @@ class _CenteredMessage extends StatelessWidget {
   final String title;
   final String body;
   final Widget? action;
+
+  /// Gives the icon a slow drift. Set only for *empty* states - an error icon
+  /// that gently floats reads as playful, which is the wrong tone when
+  /// something has actually gone wrong.
+  final bool breathe;
 
   @override
   Widget build(BuildContext context) {
@@ -214,14 +222,11 @@ class _CenteredMessage extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  color: iconBackground,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 36, color: iconColor),
+              _MessageIcon(
+                icon: icon,
+                iconColor: iconColor,
+                iconBackground: iconBackground,
+                breathe: breathe,
               ),
               AppSpacing.vXl,
               Text(
@@ -286,4 +291,81 @@ void showMessageSnack(
         ),
       ),
     );
+}
+
+/// The round icon badge at the top of an empty or error state.
+///
+/// When [breathe] is set it drifts up and down on a slow four-second cycle -
+/// just enough that an empty screen reads as waiting rather than broken. The
+/// motion stops entirely for readers who have asked for reduced motion.
+class _MessageIcon extends StatefulWidget {
+  const _MessageIcon({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.breathe,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
+  final bool breathe;
+
+  @override
+  State<_MessageIcon> createState() => _MessageIconState();
+}
+
+class _MessageIconState extends State<_MessageIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 4),
+  );
+
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    // Checked here rather than in initState because reduced-motion comes from
+    // MediaQuery, which is not available until dependencies resolve.
+    if (widget.breathe && !AppMotion.reduced(context)) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      width: 76,
+      height: 76,
+      decoration: BoxDecoration(
+        color: widget.iconBackground,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(widget.icon, size: 36, color: widget.iconColor),
+    );
+
+    if (!widget.breathe) return badge;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final curved = Curves.easeInOut.transform(_controller.value);
+        return Transform.translate(
+          offset: Offset(0, -5 * curved),
+          child: child,
+        );
+      },
+      child: badge,
+    );
+  }
 }

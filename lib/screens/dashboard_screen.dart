@@ -212,6 +212,12 @@ class _HomeViewState extends State<HomeView> {
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
+          // Branded via the indicator's own colours. Swapping in the Appstone
+          // mark itself would mean replacing RefreshIndicator with a custom
+          // sliver - it takes no child widget - which is a bigger change than
+          // the polish is worth here.
+          color: colors.brand,
+          backgroundColor: colors.surface,
           onRefresh: () async {
             setState(() => _loadingSummary = true);
             await _loadSummary();

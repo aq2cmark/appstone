@@ -517,14 +517,11 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: AppSpacing.sm),
-          child: ClipRRect(
-            borderRadius: AppRadius.smAll,
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 6,
-              color: tone,
-              backgroundColor: colors.surfaceSunken,
-            ),
+          child: AnimatedProgressBar(
+            value: ratio,
+            minHeight: 6,
+            color: tone,
+            backgroundColor: colors.surfaceSunken,
           ),
         ),
         trailing: Container(

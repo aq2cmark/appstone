@@ -36,11 +36,7 @@ class IconBadge extends StatelessWidget {
         color: soft ? colors.tint(color) : color,
         borderRadius: BorderRadius.circular(size * 0.28),
       ),
-      child: Icon(
-        icon,
-        color: soft ? color : colors.onColor,
-        size: size * 0.5,
-      ),
+      child: Icon(icon, color: soft ? color : colors.onColor, size: size * 0.5),
     );
   }
 }
@@ -176,11 +172,7 @@ class AppFeatureCard extends StatelessWidget {
 /// when every card fit on one row and it required the fixed card height that
 /// caused the overflow above. This keeps the feel at every width.
 class _HoverLift extends StatefulWidget {
-  const _HoverLift({
-    required this.child,
-    required this.color,
-    this.onTap,
-  });
+  const _HoverLift({required this.child, required this.color, this.onTap});
 
   final Widget child;
   final Color color;
@@ -192,6 +184,7 @@ class _HoverLift extends StatefulWidget {
 
 class _HoverLiftState extends State<_HoverLift> {
   bool _hovered = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -200,39 +193,58 @@ class _HoverLiftState extends State<_HoverLift> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: AppMotion.respect(context, AppMotion.quick),
-        curve: AppMotion.enter,
-        transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.lgAll,
-          boxShadow: _hovered
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: widget.color.withValues(alpha: 0.28),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : const <BoxShadow>[],
+      // Press feedback matters most on touch, where there is no hover state to
+      // tell the reader the card is interactive at all. Listener rather than
+      // GestureDetector so the InkWell below still receives the tap and draws
+      // its ripple - two competing gesture recognisers would fight over it.
+      child: Listener(
+        onPointerDown: (_) => setState(() => _pressed = true),
+        onPointerUp: (_) => setState(() => _pressed = false),
+        onPointerCancel: (_) => setState(() => _pressed = false),
+        child: AnimatedScale(
+          scale: _pressed && !AppMotion.reduced(context) ? 0.97 : 1.0,
+          duration: AppMotion.respect(context, AppMotion.instant),
+          curve: AppMotion.enter,
+          child: _buildCard(colors),
         ),
-        child: Material(
-          color: colors.surface,
-          clipBehavior: Clip.antiAlias,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: AppRadius.lgAll,
-            side: BorderSide(
-              color: _hovered ? widget.color.withValues(alpha: 0.5)
-                  : colors.border,
-            ),
+      ),
+    );
+  }
+
+  Widget _buildCard(AppColors colors) {
+    return AnimatedContainer(
+      duration: AppMotion.respect(context, AppMotion.quick),
+      curve: AppMotion.enter,
+      transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.lgAll,
+        boxShadow: _hovered
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: widget.color.withValues(alpha: 0.28),
+                  blurRadius: 22,
+                  offset: const Offset(0, 10),
+                ),
+              ]
+            : const <BoxShadow>[],
+      ),
+      child: Material(
+        color: colors.surface,
+        clipBehavior: Clip.antiAlias,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.lgAll,
+          side: BorderSide(
+            color: _hovered
+                ? widget.color.withValues(alpha: 0.5)
+                : colors.border,
           ),
-          child: InkWell(
-            onTap: widget.onTap,
-            splashColor: widget.color.withValues(alpha: 0.10),
-            highlightColor: widget.color.withValues(alpha: 0.06),
-            child: widget.child,
-          ),
+        ),
+        child: InkWell(
+          onTap: widget.onTap,
+          splashColor: widget.color.withValues(alpha: 0.10),
+          highlightColor: widget.color.withValues(alpha: 0.06),
+          child: widget.child,
         ),
       ),
     );

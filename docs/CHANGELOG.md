@@ -46,18 +46,31 @@ Quick-scan list of what changed and why, in the order it happened. For full deta
 - ⬜ Branded loading splash
 - ⬜ Manifest orientation fix (`portrait-primary` → `any`)
 
-## Queued animation/polish work (your picks, not yet built)
-- ⬜ Staggered entrance on Manual/Workflow/History/Admin screens
-- ⬜ Animated counters everywhere (scores, admin stat cards)
-- ⬜ Progress bars/rings sweep to value instead of snapping
-- ⬜ Skeleton → content crossfade
+## Animation / polish pass
+- ✅ **Staggered entrance** extended to Manual, AI Workflow (setup + plan), Defense Context, Session History, Paper Check History. Deliberately *coarse* — 2–3 groups per screen, not one step per card, so a 15-phase plan or a long history list doesn't take a full second to finish arriving, and re-filtering doesn't replay the chain
+- ✅ **Progress bars sweep to value** — new `AnimatedProgressBar` in `app_motion_widgets.dart`, wired into AI Workflow completion, Paper Checker rubric rows, and the defense question tracker
+- ✅ **Press feedback** on Home feature cards — added to `_HoverLift` via `Listener` (not `GestureDetector`, which would fight the `InkWell` for the tap and kill the ripple)
+- ✅ **Empty-state gentle motion** — icon drifts on a 4s cycle. Applied to *empty* states only; error states stay still on purpose, since a floating error icon reads as playful
+- ✅ **Branded pull-to-refresh** — Home indicator now uses brand colours (see caveat below)
+
+### Already animating before this pass (verified, no work needed)
+- `ScoreDial` — arc **and** number both count up (defense results, paper checker)
+- `ProgressRing`, `MetricBar` — already tween to value
+- `NavigationBar` indicator — Material 3 animates the pill natively
+
+## Still queued
 - ⬜ Scroll-linked app bar elevation
-- ⬜ Hero transition from Home cards into module headers
-- ⬜ Press feedback on cards/buttons (`AnimatedPressable` exists, needs wiring)
-- ⬜ Empty-state gentle motion
-- ⬜ Branded pull-to-refresh
+- ⬜ Hero transition from Home cards into module headers — *highest risk item; a tag mismatch throws at runtime rather than degrading quietly, so worth doing alone*
+- ⬜ Skeleton → content crossfade
+- ⬜ Full custom pull-to-refresh drawing the Appstone mark
 - ⬜ Contrast/AA audit
 - ⬜ Desktop density pass
+
+### Scope notes / judgement calls
+- **Title Generator was left out of the stagger sweep.** Its chip layout is hand-measured with a `TextPainter` and guarded by 4 widget tests where an overflow fails the build. Not worth the risk for an entrance animation.
+- **Admin screens untouched**, per your instruction to leave them as-is. That also means the "admin stat cards" half of the animated-counters pick is off the table.
+- **Animated counters:** the scores you'd actually notice (`ScoreDial`) already counted up before this pass, so there was nothing left to wire once admin was excluded.
+- **Pull-to-refresh** is branded by colour only. `RefreshIndicator` takes no child widget, so drawing the Appstone mark means replacing it with a custom sliver — a real change to scroll behaviour, not polish. Left queued rather than rushed.
 
 ---
 
