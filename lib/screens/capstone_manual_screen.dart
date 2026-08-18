@@ -999,7 +999,7 @@ class StudentListBody extends StatelessWidget {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
             child: child,
           ),
         ),

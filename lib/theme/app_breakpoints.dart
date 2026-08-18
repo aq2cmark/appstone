@@ -89,6 +89,16 @@ extension AppBreakpointContext on BuildContext {
     }
   }
 
-  /// Standard page padding for the current size class.
-  double get pagePadding => responsive(compact: 16, medium: 24, expanded: 32);
+  /// Horizontal page gutter for the current size class.
+  double get pagePadding =>
+      responsive(compact: 16, medium: 24, expanded: 32, large: 40);
+
+  /// Vertical page padding.
+  ///
+  /// Deliberately *not* the same as [pagePadding]. The horizontal gutter should
+  /// grow with the window, but vertical space is the scarce axis on a laptop -
+  /// a 1440x900 screen is wide and short. Stacking a 40 px gutter on top and
+  /// bottom there just pushes content below the fold, so the vertical rhythm
+  /// stops growing past the medium size class.
+  double get pagePaddingVertical => responsive(compact: 16, medium: 24);
 }

@@ -6,6 +6,7 @@ import '../screens/ai_workflow_screen.dart';
 import '../screens/defense_practice_screen.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import 'premium_upsell.dart';
@@ -224,7 +225,10 @@ class _AppShellState extends State<AppShell> {
                   if (_built[i] != null || i == _index)
                     TickerMode(
                       enabled: i == _index,
-                      child: _destination(i),
+                      child: _ModuleTransition(
+                        active: i == _index,
+                        child: _destination(i),
+                      ),
                     )
                   else
                     const SizedBox.shrink(),
@@ -521,5 +525,76 @@ class AppShellActions extends StatelessWidget {
     if (parts.length == 1) return parts.first.characters.first.toUpperCase();
     return (parts.first.characters.first + parts.last.characters.first)
         .toUpperCase();
+  }
+}
+
+/// A short scale-and-fade played when a destination becomes the active tab.
+///
+/// This is the stand-in for a Hero flight from the Home cards, which is not
+/// achievable here for two reasons: switching tabs is not a Navigator route
+/// transition, so Hero has nothing to animate between; and Home and the module
+/// screens are alive *simultaneously* inside the IndexedStack, so a shared
+/// Hero tag would put two matching heroes in one route and trip Flutter's
+/// duplicate-tag assertion on the next push.
+///
+/// This gives the same "the module opened" read with no Navigator dependency,
+/// no tag matching, and no crash surface - and it leaves the kept-alive tab
+/// state untouched, because the child is never rebuilt or discarded.
+class _ModuleTransition extends StatefulWidget {
+  const _ModuleTransition({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_ModuleTransition> createState() => _ModuleTransitionState();
+}
+
+class _ModuleTransitionState extends State<_ModuleTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: AppMotion.standard,
+    // Starts settled: the first destination shown must not animate in behind
+    // the app's own launch, and an inactive tab should be ready, not blank.
+    value: 1,
+  );
+
+  late final Animation<double> _fade = CurvedAnimation(
+    parent: _controller,
+    curve: AppMotion.enter,
+  );
+
+  @override
+  void didUpdateWidget(covariant _ModuleTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only replay on the false -> true edge, so re-selecting the tab you are
+    // already on does nothing.
+    if (widget.active && !oldWidget.active) {
+      if (AppMotion.reduced(context)) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: ScaleTransition(
+        // A small rise, not a zoom - the page should feel like it settled into
+        // place rather than flying at the reader.
+        scale: Tween<double>(begin: 0.985, end: 1).animate(_fade),
+        child: widget.child,
+      ),
+    );
   }
 }

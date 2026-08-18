@@ -3,12 +3,8 @@
   "configurations": [
     {
       "name": "appstone-web",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "C:\\Users\\kobym\\AppData\\Local\\Temp\\claude\\D--DevProj-Appstone-appstone\\2db864f1-3a1d-4e87-914f-496c6ea70561\\scratchpad\\static_server.js",
-        "D:\\DevProj\\Appstone\\appstone\\build\\web",
-        "8080"
-      ],
+      "runtimeExecutable": "dart",
+      "runtimeArgs": ["run", "tool/serve_build.dart", "build/web", "8080"],
       "port": 8080
     }
   ]

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/states/app_states.dart';
 import '../services/admin_repository.dart';
 import '../services/student_import_service.dart';
 
@@ -97,7 +98,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
         ],
         if (_busy) ...[
           const SizedBox(height: 24),
-          const Center(child: CircularProgressIndicator()),
+          const AppLoading(message: 'Reading your file...'),
         ],
         if (_preview != null && _result == null) ...[
           const SizedBox(height: 16),

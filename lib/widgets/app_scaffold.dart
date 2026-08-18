@@ -72,6 +72,7 @@ class AppScaffold extends StatelessWidget {
     final colors = AppColors.of(context);
     final tone = accent ?? colors.brand;
     final pad = padded ? context.pagePadding : 0.0;
+    final padY = padded ? context.pagePaddingVertical : 0.0;
 
     Widget content = Center(
       child: ConstrainedBox(
@@ -82,11 +83,21 @@ class AppScaffold extends StatelessWidget {
 
     if (scrollable) {
       content = SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(pad, pad, pad, pad + AppSpacing.xxl),
+        // The trailing gap clears the bottom navigation bar on phones; it is
+        // dead space on a rail layout, so it only applies where the bar exists.
+        padding: EdgeInsets.fromLTRB(
+          pad,
+          padY,
+          pad,
+          padY + (context.breakpoint.usesBottomNav ? AppSpacing.xxl : AppSpacing.lg),
+        ),
         child: content,
       );
     } else if (padded) {
-      content = Padding(padding: EdgeInsets.all(pad), child: content);
+      content = Padding(
+        padding: EdgeInsets.symmetric(horizontal: pad, vertical: padY),
+        child: content,
+      );
     }
 
     return Scaffold(

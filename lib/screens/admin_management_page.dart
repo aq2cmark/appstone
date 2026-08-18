@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/states/skeleton.dart';
+import '../widgets/states/app_states.dart';
+import '../theme/app_spacing.dart';
 import '../services/admin_repository.dart';
 import '../services/functions_service.dart';
 import 'owner_transfer_confirm_page.dart';
@@ -27,11 +30,24 @@ class AdminManagementPage extends StatelessWidget {
     return StreamBuilder<List<AdminAccount>>(
       stream: repo.adminsStream(),
       builder: (context, snapshot) {
+        // Raw exception text used to reach the owner here.
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return AppErrorView(
+            error: snapshot.error,
+            title: 'Could not load the admin list',
+          );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return Skeleton(
+            child: ListView(
+              padding: EdgeInsets.all(AppSpacing.xl),
+              children: const [
+                SkeletonCard(lines: 2, showTile: false),
+                SizedBox(height: AppSpacing.lg),
+                SkeletonList(count: 4, lines: 2),
+              ],
+            ),
+          );
         }
         final admins = snapshot.data!;
         return ListView(
@@ -52,11 +68,12 @@ class AdminManagementPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Invite an admin by email. They then open "Invited as an '
-                      'admin? Create your account" on the login screen, verify '
-                      'the email via a link we send them, and set their '
-                      'password. To remove someone, deactivate them - that '
-                      'cuts off access immediately without deleting anything.',
+                      'Invite an admin by email. Their account is created for '
+                      'them and they receive a link to set their own password '
+                      '- there is nothing for them to sign up for. To remove '
+                      'someone, deactivate them: that cuts off access '
+                      'immediately without deleting any record of what they '
+                      'did.',
                       style: TextStyle(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 16),
@@ -203,8 +220,11 @@ class AdminManagementPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Invite Admin'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        // Scrollable: two fields plus the keyboard overflows a short phone
+        // screen, and an AlertDialog does not scroll its content by default.
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
@@ -222,7 +242,8 @@ class AdminManagementPage extends StatelessWidget {
                 border: OutlineInputBorder(),
               ),
             ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(

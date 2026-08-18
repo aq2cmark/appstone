@@ -38,6 +38,7 @@ const light = <String, int>{
   'moduleManual': 0x8B1A1A, 'moduleTitleGen': 0x9C5F0A,
   'moduleDefense': 0x9A2C4E, 'moduleWorkflow': 0x3B4B9A,
   'modulePaper': 0x0F766E, 'titleDefense': 0xB4530A,
+  'admin': 0x3F5068, 'adminSoft': 0xEDF0F5,
   'oralDefense': 0x6B3FA0, 'finalDefense': 0xA62B20,
 };
 
@@ -54,20 +55,24 @@ const dark = <String, int>{
   'moduleManual': 0xD9645A, 'moduleTitleGen': 0xE0A054,
   'moduleDefense': 0xDE7395, 'moduleWorkflow': 0x8A97E8,
   'modulePaper': 0x4FBFB2, 'titleDefense': 0xE59355,
+  'admin': 0x9FB3D1, 'adminSoft': 0x1C222C,
   'oralDefense': 0xAF8AE0, 'finalDefense': 0xE8776B,
 };
 
 // Foreground -> the surfaces it is actually painted on in this app.
 const pairs = <String, List<String>>{
-  'textPrimary': ['background', 'surface', 'surfaceElevated'],
-  'textSecondary': ['background', 'surface', 'surfaceElevated'],
+  'textPrimary': ['background', 'surface', 'surfaceElevated', 'adminSoft'],
+  'textSecondary': ['background', 'surface', 'surfaceElevated', 'adminSoft'],
   'textTertiary': ['background', 'surface'],
+  // Admin group headers and sidebar sit on adminSoft.
+  
   'brand': ['background', 'surface', 'brandSoft'],
   'success': ['surface', 'successTint'],
   'warning': ['surface', 'warningTint'],
   'danger': ['surface', 'dangerTint'],
   'info': ['surface', 'infoTint'],
   'premium': ['surface', 'premiumTint'],
+  'admin': ['surface', 'background', 'adminSoft'],
   'moduleManual': ['surface'],
   'moduleTitleGen': ['surface'],
   'moduleDefense': ['surface'],

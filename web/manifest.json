@@ -5,8 +5,8 @@
     "display": "standalone",
     "background_color": "#8B1A1A",
     "theme_color": "#8B1A1A",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "description": "Capstone guidance for the College of Computer Studies, Dominican College of Tarlac, Inc. Read the CCS Capstone Manual, generate title ideas, rehearse your defense, plan your timeline, and check your manuscript.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

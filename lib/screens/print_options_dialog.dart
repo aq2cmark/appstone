@@ -92,10 +92,20 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
     final visibleGroups =
         widget.groups.where((g) => _visibleStudents(g).isNotEmpty).toList();
 
+    // The dialog used to force `width: 420`. AlertDialog reserves 40px of inset
+    // padding each side, so on any screen under ~500px - which is every phone -
+    // that fixed width overflowed horizontally. It now takes the lesser of 420
+    // and the space actually available.
+    final media = MediaQuery.of(context);
+    final maxWidth = media.size.width - 80;
+    // The list also had a fixed 340px cap regardless of screen height, which
+    // pushed the action buttons off a short landscape phone.
+    final maxListHeight = (media.size.height * 0.4).clamp(160.0, 340.0);
+
     return AlertDialog(
       title: const Text('Print Credentials'),
       content: SizedBox(
-        width: 420,
+        width: maxWidth < 420 ? maxWidth : 420,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,7 +140,7 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
             const Divider(height: 8),
             Flexible(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 340),
+                constraints: BoxConstraints(maxHeight: maxListHeight),
                 child: visibleGroups.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16),

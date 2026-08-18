@@ -52,6 +52,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.moduleDefense,
     required this.moduleWorkflow,
     required this.modulePaper,
+    required this.admin,
+    required this.adminSoft,
     required this.titleDefense,
     required this.oralDefense,
     required this.finalDefense,
@@ -142,6 +144,16 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Paper Checker.
   final Color modulePaper;
 
+  /// The admin portal's accent.
+  ///
+  /// Deliberately outside the module palette: it marks "you are on the staff
+  /// side", not "you are in a feature". A cool slate keeps it clear of all five
+  /// student module hues so the two areas never read as the same thing.
+  final Color admin;
+
+  /// Tinted admin surface - active nav item, section wash.
+  final Color adminSoft;
+
   /// Title Defense practice mode.
   final Color titleDefense;
 
@@ -198,6 +210,8 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? moduleDefense,
     Color? moduleWorkflow,
     Color? modulePaper,
+    Color? admin,
+    Color? adminSoft,
     Color? titleDefense,
     Color? oralDefense,
     Color? finalDefense,
@@ -238,6 +252,8 @@ class AppColors extends ThemeExtension<AppColors> {
       moduleDefense: moduleDefense ?? this.moduleDefense,
       moduleWorkflow: moduleWorkflow ?? this.moduleWorkflow,
       modulePaper: modulePaper ?? this.modulePaper,
+      admin: admin ?? this.admin,
+      adminSoft: adminSoft ?? this.adminSoft,
       titleDefense: titleDefense ?? this.titleDefense,
       oralDefense: oralDefense ?? this.oralDefense,
       finalDefense: finalDefense ?? this.finalDefense,
@@ -285,6 +301,8 @@ class AppColors extends ThemeExtension<AppColors> {
       moduleDefense: Color.lerp(moduleDefense, other.moduleDefense, t)!,
       moduleWorkflow: Color.lerp(moduleWorkflow, other.moduleWorkflow, t)!,
       modulePaper: Color.lerp(modulePaper, other.modulePaper, t)!,
+      admin: Color.lerp(admin, other.admin, t)!,
+      adminSoft: Color.lerp(adminSoft, other.adminSoft, t)!,
       titleDefense: Color.lerp(titleDefense, other.titleDefense, t)!,
       oralDefense: Color.lerp(oralDefense, other.oralDefense, t)!,
       finalDefense: Color.lerp(finalDefense, other.finalDefense, t)!,
@@ -389,6 +407,8 @@ class AppColors extends ThemeExtension<AppColors> {
     moduleDefense: Color(0xFF9A2C4E),
     moduleWorkflow: Color(0xFF3B4B9A),
     modulePaper: Color(0xFF0F766E),
+    admin: Color(0xFF3F5068),
+    adminSoft: Color(0xFFEDF0F5),
     titleDefense: Color(0xFFB4530A),
     oralDefense: Color(0xFF6B3FA0),
     finalDefense: Color(0xFFA62B20),
@@ -444,6 +464,8 @@ class AppColors extends ThemeExtension<AppColors> {
     moduleDefense: Color(0xFFDE7395),
     moduleWorkflow: Color(0xFF8A97E8),
     modulePaper: Color(0xFF4FBFB2),
+    admin: Color(0xFF9FB3D1),
+    adminSoft: Color(0xFF1C222C),
     titleDefense: Color(0xFFE59355),
     oralDefense: Color(0xFFAF8AE0),
     finalDefense: Color(0xFFE8776B),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
@@ -146,7 +147,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
               children: [
                 Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
+                    constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: StaggeredEntrance.list(<Widget>[

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
@@ -108,7 +109,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
           child: _buildBody(),
         ),
       ),

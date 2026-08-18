@@ -20,12 +20,12 @@ Quick-scan list of what changed and why, in the order it happened. For full deta
 - ✅ Home rebuilt — progress band, workflow preview, continue-card, feature grid recolored with real module accents
 - ✅ Premium upsell screen (replaces the old snackbar)
 
-## Phase 3 — Student screens (in progress)
+## Phase 3 — Student screens
 - ✅ Login — split branded layout, inline field errors
 - ✅ Defense Practice, Defense Results (score dial + radar + rank badge), Defense Session (two-column, timer ring)
-- ✅ Paper Checker — two-column, PDF export
-- ✅ **PDF export** — `lib/services/report_printer.dart` (defense results + paper check)
-- 🔄 Manual, Title Generator, AI Workflow, Defense Context, both history screens — **restyled colors only, layout/structure/copy untouched per your instruction**
+- ✅ Paper Checker — two-column layout
+- ⛔ PDF export was built here, then **removed at your request** — see "Reverted" below
+- ✅ Manual, Title Generator, AI Workflow, Defense Context, both history screens — **colours + entrance motion only; layout/structure/copy untouched per your instruction** (the Manual later got a full reading treatment, which you approved separately)
 
 ### Fixes along the way
 - ✅ **Dark mode, properly** — all 13 remaining screens moved off the legacy `lib/app_colors.dart` (deleted) onto brightness-aware tokens. 118 refs remapped, hardcoded light tints replaced, `Colors.green/orange` → `success`/`warning` tokens
@@ -38,13 +38,12 @@ Quick-scan list of what changed and why, in the order it happened. For full deta
 - ✅ **Fixed dead-end navigation bug** — opening a module from a Home card used to push it *over* the shell (bottom bar vanished, no back button). Now Home cards switch shell tabs directly via `AppShellScope`; genuinely-pushed screens (Title Generator, sessions, history) get their back button automatically
 
 ## Phase 4 — Admin portal
-- ⬜ Not started. Your instruction: leave admin screens as-is for now (color migration only, done above)
+See the detailed entry at the end of this file.
 
 ## Phase 5 — Platform / polish
 - ✅ Viewport meta tag, theme-color, real description in `web/index.html`
 - ✅ Removed the floating PWA install button
-- ⬜ Branded loading splash
-- ⬜ Manifest orientation fix (`portrait-primary` → `any`)
+- ✅ Branded loading splash + manifest fixes — see the detailed Phase 5 entry at the end of this file
 
 ## Animation / polish pass
 - ✅ **Staggered entrance** extended to Manual, AI Workflow (setup + plan), Defense Context, Session History, Paper Check History. Deliberately *coarse* — 2–3 groups per screen, not one step per card, so a 15-phase plan or a long history list doesn't take a full second to finish arriving, and re-filtering doesn't replay the chain
@@ -97,13 +96,25 @@ dart tool/contrast_audit.dart
 
 **Login brand panel** now pins to the light palette's maroons in both themes. Following the theme made its gradient run to a pale salmon in dark mode, where neither white nor dark ink cleared AA across the whole sweep.
 
+## Reverted
+- ✅ **PDF export removed entirely** (Defense Results *and* Paper Checker) at your request. `lib/services/report_printer.dart` deleted — `pdf`/`printing` are back to their original single use, the admin credential roster in `credentials_printer.dart`. No other behaviour touched.
+
+## Hero transitions — not built, and why
+Hero was dropped after analysis, not attempted and abandoned. Two blockers:
+
+1. Home cards now **switch tabs** rather than push a route. Hero flights are driven by Navigator route transitions, so a tab switch produces no animation at all.
+2. Home and the module screens are alive **simultaneously** inside the `IndexedStack`. A shared Hero tag would place two matching heroes in one route, tripping Flutter's duplicate-tag assertion and crashing on the *next* route push.
+
+Replaced with **`_ModuleTransition`** — a short scale-and-fade when a destination becomes active. Same "the module opened" read, with no Navigator dependency, no tag matching, and no crash surface. Only fires on the inactive→active edge, so re-tapping the current tab does nothing, and it never rebuilds the child, so kept-alive tab state survives.
+
+## Also this pass
+- ✅ **Scroll-linked app bar** — implemented for real. The previous code *claimed* a scrolled-under effect in a comment but had `scrolledUnderElevation: flat` and a transparent shadow, so nothing happened. Now uses a brand surface tint (colour, not shadow — shadows are near-invisible on dark).
+- ✅ **Skeleton → content crossfade** on the Home progress band, with a `layoutBuilder` so the differing heights don't make the section jump mid-fade.
+
 ## Still queued
-- ⬜ Hero transition from Home cards *(you picked this — highest risk, doing it alone and last)*
-- ⬜ Icon rule formalised: rounded = active/primary, outlined = idle/secondary *(decided; mostly matches current code, needs a documentation pass + spot fixes)*
-- ⬜ Scroll-linked app bar elevation
-- ⬜ Skeleton → content crossfade
-- ⬜ Full custom pull-to-refresh drawing the Appstone mark
-- ⬜ Desktop density pass
+- ⬜ **Icon rule, written down** — rounded = active/primary, outlined = idle/secondary. Decided, and the code already broadly follows it; what is missing is the rule recorded in `CLAUDE.md` plus a few spot fixes, so it does not drift back.
+- ⬜ **Custom pull-to-refresh** drawing the Appstone mark. `RefreshIndicator` takes no child widget, so this means replacing it with a custom sliver - more work than the polish is worth unless you want it.
+- ⬜ **Debug-build overflow sweep** — see the limitation noted under Phase 5.
 
 ### Scope notes / judgement calls
 - **Title Generator was left out of the stagger sweep.** Its chip layout is hand-measured with a `TextPainter` and guarded by 4 widget tests where an overflow fails the build. Not worth the risk for an entrance animation.
@@ -122,3 +133,54 @@ flutter build web --release → succeeds
 
 ## Known open item
 I have not been able to visually verify any of this — the Browser pane isn't rendering screenshots in this environment. Everything above is verified structurally (analyzer/tests/build) but **not seen**. Please keep sending screenshots when something looks wrong; that's the only way I catch it.
+
+---
+
+## Desktop density pass
+- ✅ `pagePadding` gains a `large` step (40px); **vertical** padding deliberately stops growing past medium (24px) — a 1440×900 laptop is wide and *short*, so a matching vertical gutter just pushes content below the fold
+- ✅ `AppScaffold` bottom gap now only reserves bottom-nav clearance where a bottom nav actually exists (phones), instead of leaving dead space under the rail layout
+- ✅ The `maxWidth: 760` literal — previously copy-pasted across 6 screens — now resolves through `AppContentWidth.reading`, so the measure is centralised
+
+## Phase 4 — Admin portal
+- ✅ **Student table → stacked cards below 600px.** The six-column `DataTable` could only be read on a phone by dragging sideways, which meant the *actions* column — the reason an admin opens the screen — was off-screen by default. Same data, same actions, no horizontal scrolling.
+- ✅ **Search** across groups and students (name, email, Student ID). Matching a student surfaces the group they're in, since that's where every action on them lives. The stat cards keep counting the whole roster while a search is active — they summarise the department, not the filter.
+- ✅ **Two overflowing dialogs fixed** — Edit Student and Invite Admin both had two fields plus a keyboard inside a non-scrolling `AlertDialog` (defect D3 from the original audit).
+
+**Safety:** the three student action handlers (`editStudent`, `resetStudentPassword`, `deleteStudent`) were *extracted* into one shared `_studentActions()` used by both layouts, not duplicated — so the table and card layouts can't drift apart. Verified by diff that no backend call, Cloud Function, or repository method was changed or removed.
+
+## Phase 5 — Platform
+- ✅ **Branded boot splash** (`web/index.html`). The ~26 MB bundle previously showed a blank white page for seconds on campus wifi. Plain HTML/CSS so it paints before `main.dart.js` parses; the mark is inline SVG using the *same* 512×512 geometry as `appstone_logo.svg` and the in-app painter, so splash and app show an identical logo. Dismissed on Flutter's `flutter-first-frame` event, with a 20 s failsafe so an engine error can't strand the user on a maroon screen.
+- ✅ **Manifest fixed** — `orientation` `portrait-primary` → `any` (it was locking tablets and installed desktop PWAs to portrait), and the "A new Flutter project." description replaced.
+- ✅ `tool/serve_build.dart` + `.claude/launch.json` — serves the release bundle locally so the built output can actually be opened and checked.
+
+### Bug found *by* the splash work
+Setting `html, body { background-color: #8B1A1A }` for the splash left the page maroon permanently — visible wherever Flutter's canvas doesn't paint, most obviously as a maroon flash when over-scrolling on a phone. The dismiss handler now adds an `app-booted` class that hands the background back to Flutter. **Verified in-browser:** after boot, `html` and `body` computed background are both `rgba(0,0,0,0)`.
+
+### Responsive verification (first time anything was actually observed)
+A local server finally made in-browser checks possible. At **320 / 768 / 1920 px**, reloading at each size: Flutter's view matches the viewport exactly, there is **no horizontal document overflow**, the splash dismisses, and the console is **error-free**.
+
+⚠️ **Limitation worth knowing:** this is a *release* build, and Flutter only asserts `RenderFlex overflowed` in debug. So this sweep proves the page doesn't scroll sideways and doesn't error — it does **not** prove no widget overflows internally. A debug-build pass, or your own eyes on a real phone, is still the way to catch those.
+
+---
+
+## Admin portal overhaul (full)
+
+**Approach:** same design system as the student side, own accent. Admin keeps a persistent sidebar (correct model for a back office) rather than adopting the student tab bar.
+
+- ✅ **New tokens `admin` / `adminSoft`** — slate blue (`#3F5068` light, `#9FB3D1` dark). Deliberately outside the module palette: it marks "staff side", not "a feature". Every admin pair measured **7.1:1 – 8.8:1**.
+- ✅ **Sidebar rebuilt** — surface panel with a brand-tinted active item, replacing the solid maroon slab.
+- ✅ **Header rebuilt** — neutral surface + admin accent line + **theme toggle** (admin was the only area without one). `SectionHeader` became orphaned and was deleted.
+- ✅ **Collapsible groups**, expanded by default.
+- ✅ **Credential handoff** — the registration result is now a proper panel: monospaced Student ID and password, copy button on each, "Copy all", and an explicit warning that the temp password can't be shown again. New `widgets/credential_value.dart`.
+- ✅ **Copy button on temp passwords** in the student table/cards, rendered monospaced so `0`/`O` and `1`/`l` are distinguishable.
+- ✅ **Audit log** — grouped under Today / Yesterday / date headings with category filter chips carrying counts. Rows show time only, since the date is in the heading.
+- ✅ **States** — `AppErrorView` + skeletons replacing raw `snapshot.error` text and bare spinners across the portal, admins page, audit log and import.
+- ✅ **Stale copy fixed** — the Admins page told owners to use an *"Invited as an admin? Create your account"* screen that no longer exists (a known issue in `CLAUDE.md`). Rewritten to describe the actual flow: the account is created for them and they get a set-password link.
+
+### Second contrast failure found — same root cause
+The audit had only tested text-on-surface pairs, so it missed **coloured slabs**. Both the sidebar *and* every group-card header painted `colors.brand` with hardcoded white text — **3.55:1 in dark mode**, below AA. Both now use `adminSoft` with themed text. `tool/contrast_audit.dart` was extended to cover `admin` / `adminSoft`, so this class of bug is caught in future.
+
+**Zero hardcoded `Colors.white` and zero raw `snapshot.error` remain anywhere in the admin screens.**
+
+### Safety
+No Cloud Function, repository method, or registration/import logic was touched — only presentation. One regression was caught and reverted mid-work: a bulk `perl` substitution damaged `admin_portal_page.dart` (118 analyzer errors) by deleting `style: const TextStyle(` lines; restored from backup and redone with precise edits.
