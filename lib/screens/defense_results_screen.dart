@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
 import '../services/defense_ai_service.dart';
+import '../services/report_printer.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
+import '../widgets/charts/metric_radar.dart';
+import '../widgets/charts/score_dial.dart';
+import '../widgets/states/app_states.dart';
 import 'title_defense_screen.dart';
 
-// Shown after a defense practice session ends.
-// Score comes from DefenseAiService.scoreSession, computed once all
-// questions (generic + any AI follow-ups) have been answered.
-class DefenseResultsScreen extends StatelessWidget {
+/// Shown after a defense practice session ends.
+///
+/// Score comes from `DefenseAiService.scoreSession`, computed once all
+/// questions (generic + any AI follow-ups) have been answered.
+///
+/// This is the one screen where the expressive motion register applies: the
+/// dial sweeps up from zero, the radar draws itself, and a strong score earns a
+/// single celebratory beat. Everywhere outside defense practice stays calm.
+class DefenseResultsScreen extends StatefulWidget {
   const DefenseResultsScreen({
     super.key,
     required this.title,
@@ -21,278 +35,461 @@ class DefenseResultsScreen extends StatelessWidget {
   final String title;
   final List<String> questions;
   final int maxQuestions;
-  // Carried through so "Practice Again" starts with the same question timer.
+
+  /// Carried through so "Practice again" starts with the same question timer.
   final int secondsPerQuestion;
   final int questionsAnswered;
   final DefenseScore score;
 
   @override
+  State<DefenseResultsScreen> createState() => _DefenseResultsScreenState();
+}
+
+class _DefenseResultsScreenState extends State<DefenseResultsScreen> {
+  bool _printing = false;
+
+  /// A plain-language band for the overall score.
+  ///
+  /// Derived from the score the AI already returns - no new data is stored, and
+  /// nothing about the grading changes. It exists so the number lands as
+  /// feedback rather than as a bare integer.
+  ({String label, String headline, IconData icon}) get _rank {
+    final overall = widget.score.overall;
+    if (overall >= 85) {
+      return (
+        label: 'Panel ready',
+        headline: 'Strong session',
+        icon: Icons.workspace_premium_rounded,
+      );
+    }
+    if (overall >= 70) {
+      return (
+        label: 'Nearly there',
+        headline: 'Good effort',
+        icon: Icons.trending_up_rounded,
+      );
+    }
+    if (overall >= 50) {
+      return (
+        label: 'Needs work',
+        headline: 'Keep practicing',
+        icon: Icons.school_rounded,
+      );
+    }
+    return (
+      label: 'Early days',
+      headline: 'Room to grow',
+      icon: Icons.self_improvement_rounded,
+    );
+  }
+
+  Color get _tone {
+    final colors = AppColors.of(context);
+    final overall = widget.score.overall;
+    if (overall >= 85) return colors.success;
+    if (overall >= 70) return colors.moduleDefense;
+    if (overall >= 50) return colors.warning;
+    return colors.danger;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Session Complete'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 680),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.emoji_events,
-                    color: AppColors.gold,
-                    size: 56,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    scoreHeadline(score.overall),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "You've completed the $title practice.",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.textGrey),
-                  ),
-                  const SizedBox(height: 20),
-                  Card(
-                    color: AppColors.primary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'OVERALL PERFORMANCE SCORE',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${score.overall}%',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '$questionsAnswered questions answered',
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Chip(
-                            label: Text(title),
-                            backgroundColor: Colors.white24,
-                            labelStyle: const TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Card(
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'EVALUATION METRICS',
-                            style: TextStyle(
-                              color: AppColors.textGrey,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          buildMetricRow('Clarity', score.clarity),
-                          buildMetricRow('Technical', score.technical),
-                          buildMetricRow('Completeness', score.completeness),
-                          buildMetricRow('Presentation', score.presentation),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (score.insights.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Card(
-                      color: const Color(0xFFFFF8E7),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'AI INSIGHTS',
-                              style: TextStyle(
-                                color: AppColors.textGrey,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(score.insights),
-                          ],
+    final colors = AppColors.of(context);
+    final rank = _rank;
+
+    return AppScaffold(
+      title: 'Session complete',
+      subtitle: widget.title,
+      accent: colors.moduleDefense,
+      maxContentWidth: AppContentWidth.wide,
+      actions: <Widget>[
+        IconButton(
+          tooltip: 'Export as PDF',
+          onPressed: _printing ? null : _exportPdf,
+          icon: _printing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.picture_as_pdf_outlined),
+        ),
+      ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          StaggeredEntrance(index: 0, child: _buildScoreCard(rank)),
+          AppSpacing.vXl,
+          // Radar and bars say the same thing two ways: the radar shows the
+          // shape of the performance at a glance, the bars give exact numbers.
+          StaggeredEntrance(
+            index: 1,
+            child: AppTwoColumn(
+              sideWidth: 320,
+              sideFirstWhenStacked: true,
+              main: AppSection(
+                label: 'Evaluation metrics',
+                accent: colors.moduleDefense,
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      children: <Widget>[
+                        MetricBar(
+                          label: 'Clarity',
+                          value: widget.score.clarity,
+                          max: 100,
+                          color: colors.moduleDefense,
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  Card(
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'GRADING RUBRIC',
-                            style: TextStyle(
-                              color: AppColors.textGrey,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          buildRubricRow(
-                            'Clarity',
-                            'How clear and easy to understand your answers were.',
-                          ),
-                          buildRubricRow(
-                            'Technical',
-                            'The depth and accuracy of your technical explanations.',
-                          ),
-                          buildRubricRow(
-                            'Completeness',
-                            'Whether your answers fully addressed each question asked.',
-                          ),
-                          buildRubricRow(
-                            'Presentation',
-                            'The structure and professionalism of your answers overall.',
-                            isLast: true,
-                          ),
-                        ],
-                      ),
+                        MetricBar(
+                          label: 'Technical accuracy',
+                          value: widget.score.technical,
+                          max: 100,
+                          color: colors.moduleDefense,
+                        ),
+                        MetricBar(
+                          label: 'Completeness',
+                          value: widget.score.completeness,
+                          max: 100,
+                          color: colors.moduleDefense,
+                        ),
+                        MetricBar(
+                          label: 'Presentation',
+                          value: widget.score.presentation,
+                          max: 100,
+                          color: colors.moduleDefense,
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+              side: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Center(
+                    child: MetricRadar(
+                      size: 240,
+                      color: colors.moduleDefense,
+                      metrics: <RadarMetric>[
+                        RadarMetric(
+                          label: 'Clarity',
+                          value: widget.score.clarity,
+                        ),
+                        RadarMetric(
+                          label: 'Technical',
+                          value: widget.score.technical,
+                        ),
+                        RadarMetric(
+                          label: 'Complete',
+                          value: widget.score.completeness,
+                        ),
+                        RadarMetric(
+                          label: 'Delivery',
+                          value: widget.score.presentation,
+                        ),
+                      ],
                     ),
-                    onPressed: () => practiceAgain(context),
-                    icon: const Icon(Icons.replay),
-                    label: const Text('Practice Again'),
                   ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () =>
-                        Navigator.popUntil(context, (route) => route.isFirst),
-                    icon: const Icon(Icons.home_outlined),
-                    label: const Text('Back to Home'),
-                  ),
-                ],
+                ),
               ),
             ),
+          ),
+          if (widget.score.insights.trim().isNotEmpty) ...<Widget>[
+            AppSpacing.vXl,
+            StaggeredEntrance(index: 2, child: _buildInsights()),
+          ],
+          AppSpacing.vXl,
+          StaggeredEntrance(index: 3, child: _buildRubric()),
+          AppSpacing.vXl,
+          StaggeredEntrance(
+            index: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                FilledButton.icon(
+                  onPressed: _practiceAgain,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Practice again'),
+                ),
+                AppSpacing.vMd,
+                OutlinedButton.icon(
+                  onPressed: _printing ? null : _exportPdf,
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Export as PDF'),
+                ),
+                AppSpacing.vMd,
+                TextButton(
+                  onPressed: () =>
+                      Navigator.popUntil(context, (route) => route.isFirst),
+                  child: const Text('Back to home'),
+                ),
+              ],
+            ),
+          ),
+          AppSpacing.vLg,
+          Text(
+            'Practice feedback from the AI panel. It is not an official '
+            'evaluation and does not replace your adviser or capstone panel.',
+            textAlign: TextAlign.center,
+            style: AppTypography.bodySmall.copyWith(color: colors.textTertiary),
           ),
         ],
       ),
     );
   }
 
-  String scoreHeadline(int overall) {
-    if (overall >= 85) return 'Great Job!';
-    if (overall >= 70) return 'Good Effort!';
-    return 'Keep Practicing!';
+  Widget _buildScoreCard(({String label, String headline, IconData icon}) rank) {
+    final colors = AppColors.of(context);
+    final tone = _tone;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.xlAll,
+        border: Border.all(color: colors.tintBorder(tone)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[colors.tint(tone), colors.surface],
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final dial = ScoreDial(
+            score: widget.score.overall,
+            size: 168,
+            color: tone,
+            label: 'out of 100',
+          );
+
+          final details = Column(
+            crossAxisAlignment: constraints.maxWidth < 520
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
+            children: <Widget>[
+              _RankBadge(label: rank.label, icon: rank.icon, color: tone),
+              AppSpacing.vMd,
+              Text(
+                rank.headline,
+                textAlign:
+                    constraints.maxWidth < 520 ? TextAlign.center : TextAlign.start,
+                style: AppTypography.headlineLarge.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+              AppSpacing.vXs,
+              Text(
+                '${widget.questionsAnswered} of ${widget.maxQuestions} '
+                'questions answered in ${widget.title}.',
+                textAlign:
+                    constraints.maxWidth < 520 ? TextAlign.center : TextAlign.start,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
+          );
+
+          if (constraints.maxWidth < 520) {
+            return Column(
+              children: <Widget>[dial, AppSpacing.vXl, details],
+            );
+          }
+
+          return Row(
+            children: <Widget>[
+              dial,
+              AppSpacing.hXl,
+              Expanded(child: details),
+            ],
+          );
+        },
+      ),
+    );
   }
 
-  void practiceAgain(BuildContext context) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => DefensePracticeSessionScreen(
-          title: title,
-          questions: questions,
-          maxQuestions: maxQuestions,
-          secondsPerQuestion: secondsPerQuestion,
+  Widget _buildInsights() {
+    final colors = AppColors.of(context);
+
+    return AppSection(
+      label: 'Panel insights',
+      accent: colors.moduleDefense,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(
+                Icons.psychology_outlined,
+                color: colors.moduleDefense,
+                size: AppSize.iconMd,
+              ),
+              AppSpacing.hLg,
+              Expanded(
+                child: Text(
+                  widget.score.insights.trim(),
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget buildMetricRow(String label, int value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text('$value%', style: const TextStyle(fontWeight: FontWeight.bold)),
+  Widget _buildRubric() {
+    final colors = AppColors.of(context);
+
+    const rubric = <(String, String)>[
+      (
+        'Clarity',
+        'How directly the answer addressed the question, without wandering.',
+      ),
+      (
+        'Technical accuracy',
+        'Whether the technical claims were correct and specific to your system.',
+      ),
+      (
+        'Completeness',
+        'Whether the answer covered what the panel actually asked for.',
+      ),
+      (
+        'Presentation',
+        'Structure and confidence of the wording in your written answer.',
+      ),
+    ];
+
+    return AppSection(
+      label: 'How this was graded',
+      accent: colors.moduleDefense,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              for (var i = 0; i < rubric.length; i++) ...<Widget>[
+                if (i > 0) ...<Widget>[
+                  AppSpacing.vMd,
+                  Divider(height: 1, color: colors.divider),
+                  AppSpacing.vMd,
+                ],
+                Text(
+                  rubric[i].$1,
+                  style: AppTypography.titleSmall.copyWith(
+                    color: colors.textPrimary,
+                  ),
+                ),
+                AppSpacing.vXs,
+                Text(
+                  rubric[i].$2,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: value / 100,
-              minHeight: 8,
-              color: AppColors.primary,
-              backgroundColor: AppColors.background,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget buildRubricRow(String label, String description, {bool isLast = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          Text(description, style: const TextStyle(color: AppColors.textGrey)),
-        ],
+  void _practiceAgain() {
+    Navigator.pushReplacement<void, void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => DefensePracticeSessionScreen(
+          title: widget.title,
+          questions: widget.questions,
+          maxQuestions: widget.maxQuestions,
+          secondsPerQuestion: widget.secondsPerQuestion,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    setState(() => _printing = true);
+    try {
+      await ReportPrinter.printDefenseResult(
+        mode: widget.title,
+        score: widget.score,
+        questionsAnswered: widget.questionsAnswered,
+        rank: _rank.label,
+      );
+    } catch (error) {
+      if (mounted) showErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+}
+
+/// The rank pill above the headline.
+///
+/// Scales in once on arrival - the single celebratory beat allowed on this
+/// screen. It is suppressed when the reader has asked for reduced motion.
+class _RankBadge extends StatefulWidget {
+  const _RankBadge({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  State<_RankBadge> createState() => _RankBadgeState();
+}
+
+class _RankBadgeState extends State<_RankBadge> {
+  double _scale = 0.6;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _scale = 1);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return AnimatedScale(
+      scale: AppMotion.reduced(context) ? 1 : _scale,
+      duration: AppMotion.respect(context, AppMotion.celebratory),
+      curve: AppMotion.emphasis,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs + 2,
+        ),
+        decoration: BoxDecoration(
+          color: colors.tint(widget.color),
+          borderRadius: AppRadius.pillAll,
+          border: Border.all(color: colors.tintBorder(widget.color)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(widget.icon, size: 15, color: widget.color),
+            AppSpacing.hSm,
+            Text(
+              widget.label.toUpperCase(),
+              style: AppTypography.labelSmall.copyWith(color: widget.color),
+            ),
+          ],
+        ),
       ),
     );
   }

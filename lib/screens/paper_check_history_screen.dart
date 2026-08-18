@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../services/paper_check_history_service.dart';
 import 'auth_gate.dart';
 
@@ -99,17 +100,15 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Check History'),
+            appBar: AppBar(
+                title: const Text('Check History'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
+          const ThemeToggleButton(),
         ],
       ),
       body: Center(
@@ -122,13 +121,14 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
   }
 
   Widget _buildBody() {
+    final colors = AppColors.of(context);
     if (_error != null) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, color: AppColors.primary, size: 40),
+            Icon(Icons.error_outline, color: colors.brand, size: 40),
             const SizedBox(height: 12),
             Text(_error!, textAlign: TextAlign.center),
             const SizedBox(height: 12),
@@ -141,18 +141,18 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_records!.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, color: AppColors.textGrey, size: 48),
+            Icon(Icons.history_rounded, color: colors.textSecondary, size: 48),
             SizedBox(height: 12),
             Text(
               'No paper checks yet.\nCheck a manuscript and it will show up '
               'here so you can compare it against later checks.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textGrey),
+              style: TextStyle(color: colors.textSecondary),
             ),
           ],
         ),
@@ -171,12 +171,13 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
 
   // Sort dropdown, matching the Session History control.
   Widget _buildControls() {
+    final colors = AppColors.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            const Icon(Icons.sort, size: 18, color: AppColors.textGrey),
+            Icon(Icons.sort_rounded, size: 18, color: colors.textSecondary),
             const SizedBox(width: 8),
             DropdownButton<PaperCheckSort>(
               value: _sort,
@@ -205,6 +206,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
   }
 
   Widget _buildCheckCard(PaperCheckRecord record) {
+    final colors = AppColors.of(context);
     final color = _scoreColor(record.percent);
     final previous = _previousById[record.id];
     final dateLabel = record.createdAt == null
@@ -235,8 +237,8 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
               const SizedBox(height: 2),
               Text(
                 dateLabel,
-                style: const TextStyle(
-                  color: AppColors.textGrey,
+                style: TextStyle(
+                  color: colors.textSecondary,
                   fontSize: 12,
                 ),
               ),
@@ -275,10 +277,10 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const Text(
+              Text(
                 'SCORE',
                 style: TextStyle(
-                  color: AppColors.textGrey,
+                  color: colors.textSecondary,
                   fontSize: 9,
                   letterSpacing: 1,
                 ),
@@ -297,6 +299,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
     PaperCheckRecord record,
     PaperCheckRecord? previous,
   ) {
+    final colors = AppColors.of(context);
     // Match previous sections by name so a per-chapter delta survives any
     // reordering in the stored data.
     final prevByName = {
@@ -310,11 +313,11 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
           Text(record.summary, style: const TextStyle(height: 1.4)),
           const SizedBox(height: 12),
         ],
-        const Text(
+        Text(
           'Score breakdown',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: AppColors.primary,
+            color: colors.brand,
           ),
         ),
         const SizedBox(height: 6),
@@ -339,10 +342,10 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
           const Divider(height: 24),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.rule_folder_outlined,
                 size: 18,
-                color: AppColors.textGrey,
+                color: colors.textSecondary,
               ),
               const SizedBox(width: 8),
               const Expanded(child: Text('Layout compliance (Section 10.3)')),
@@ -355,10 +358,10 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
         ],
         if (previous == null) ...[
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'This is your first saved check - run another to see what changed.',
             style: TextStyle(
-              color: AppColors.textGrey,
+              color: colors.textSecondary,
               fontSize: 12,
               fontStyle: FontStyle.italic,
             ),
@@ -372,21 +375,22 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
   // the app danger tone, no change is grey. [label] appends context, e.g.
   // "vs previous", for the header delta.
   Widget _deltaChip(int current, int previous, {String? label}) {
+    final colors = AppColors.of(context);
     final diff = current - previous;
     final Color color;
     final IconData icon;
     final String text;
     if (diff > 0) {
-      color = Colors.green.shade700;
-      icon = Icons.arrow_upward;
+      color = colors.success;
+      icon = Icons.arrow_upward_rounded;
       text = '+$diff';
     } else if (diff < 0) {
-      color = AppColors.danger;
-      icon = Icons.arrow_downward;
+      color = colors.danger;
+      icon = Icons.arrow_downward_rounded;
       text = '$diff';
     } else {
-      color = AppColors.textGrey;
-      icon = Icons.remove;
+      color = colors.textSecondary;
+      icon = Icons.remove_rounded;
       text = 'same';
     }
     return Container(
@@ -416,8 +420,9 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
   // Same score bands as the Paper Checker screen, so a score reads the same
   // colour in history as it did on the result.
   Color _scoreColor(double ratio) {
-    if (ratio >= 0.75) return Colors.green.shade700;
-    if (ratio >= 0.5) return Colors.orange.shade800;
-    return AppColors.primary;
+    final colors = AppColors.of(context);
+    if (ratio >= 0.75) return colors.success;
+    if (ratio >= 0.5) return colors.warning;
+    return colors.brand;
   }
 }

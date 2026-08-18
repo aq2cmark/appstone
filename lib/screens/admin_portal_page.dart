@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 import '../services/admin_repository.dart';
 import '../services/credentials_printer.dart';
 import '../services/functions_service.dart';
@@ -37,8 +37,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     final isWide = MediaQuery.sizeOf(context).width >= 800;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      drawer: isWide ? null : Drawer(child: buildSidebarContent()),
+            drawer: isWide ? null : Drawer(child: buildSidebarContent()),
       body: StreamBuilder<List<CapstoneGroup>>(
         stream: _repo.groupsStream(),
         builder: (context, snapshot) {
@@ -88,18 +87,20 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Widget buildSidebar() {
+    final colors = AppColors.of(context);
     return Container(
       width: 250,
-      color: AppColors.primary,
+      color: colors.brand,
       child: buildSidebarContent(),
     );
   }
 
   Widget buildSidebarContent() {
+    final colors = AppColors.of(context);
     // Kept as a separate widget so the same menu can be used
     // in the desktop sidebar and the mobile drawer.
     return Container(
-      color: AppColors.primary,
+      color: colors.brand,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,15 +134,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               ),
             ),
             const Divider(color: Colors.white24),
-            navButton(0, Icons.dashboard, 'Dashboard'),
-            navButton(1, Icons.person_add, 'Register Student'),
-            navButton(2, Icons.upload_file, 'Import Students'),
+            navButton(0, Icons.dashboard_rounded, 'Dashboard'),
+            navButton(1, Icons.person_add_rounded, 'Register Student'),
+            navButton(2, Icons.upload_file_rounded, 'Import Students'),
             if (widget.role == AdminRole.owner)
-              navButton(3, Icons.admin_panel_settings, 'Admins'),
+              navButton(3, Icons.admin_panel_settings_rounded, 'Admins'),
             if (widget.role == AdminRole.owner)
-              navButton(4, Icons.history, 'Audit Log'),
+              navButton(4, Icons.history_rounded, 'Audit Log'),
             const Spacer(),
-            navButton(-1, Icons.logout, 'Logout'),
+            navButton(-1, Icons.logout_rounded, 'Logout'),
             const SizedBox(height: 16),
           ],
         ),
@@ -207,7 +208,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           ? Builder(
               builder: (context) => IconButton(
                 onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(Icons.menu, color: Colors.white),
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
               ),
             )
           : null,
@@ -215,6 +216,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Widget buildDashboard(List<CapstoneGroup> groups) {
+    final colors = AppColors.of(context);
     // Summary values are calculated from the Firestore group list.
     final totalStudents = groups.fold<int>(
       0,
@@ -238,15 +240,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               children: [
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: colors.brand,
                   ),
                   onPressed: createGroup,
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_rounded),
                   label: const Text('Create New Group'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _printCredentials(groups),
-                  icon: const Icon(Icons.print),
+                  icon: const Icon(Icons.print_rounded),
                   label: const Text('Print Credentials'),
                 ),
               ],
@@ -259,22 +261,22 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 statCard(
                   'Total Groups',
                   groups.length.toString(),
-                  Icons.groups,
-                  AppColors.primary,
+                  Icons.groups_rounded,
+                  colors.brand,
                   statWidth,
                 ),
                 statCard(
                   'Total Students',
                   totalStudents.toString(),
-                  Icons.person_add,
-                  AppColors.gold,
+                  Icons.person_add_rounded,
+                  colors.premium,
                   statWidth,
                 ),
                 statCard(
                   'Premium Groups',
                   premiumGroups.toString(),
-                  Icons.workspace_premium,
-                  AppColors.primaryDark,
+                  Icons.workspace_premium_rounded,
+                  colors.brandStrong,
                   statWidth,
                 ),
               ],
@@ -301,6 +303,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     Color color,
     double width,
   ) {
+    final colors = AppColors.of(context);
     // The parent calculates width so the cards fill the row on desktop
     // and become full-width blocks on mobile. Same white card + icon-badge
     // language as the student dashboard's feature cards.
@@ -317,7 +320,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(color: AppColors.textGrey),
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 28),
                     Text(
@@ -358,6 +361,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Widget buildGroupCard(CapstoneGroup group, List<CapstoneGroup> groups) {
+    final colors = AppColors.of(context);
     // One card per capstone group.
     // The DataTable is horizontally scrollable so it still works on mobile.
     return Card(
@@ -387,7 +391,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                       IconButton(
                         tooltip: 'Rename group',
                         onPressed: () => renameGroup(group),
-                        icon: const Icon(Icons.edit, color: Colors.white, size: 18),
+                        icon: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -395,8 +399,8 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                       Chip(
                         label: Text(group.isPremium ? 'Premium' : 'Free Plan'),
                         backgroundColor: group.isPremium
-                            ? AppColors.gold
-                            : AppColors.grey,
+                            ? colors.premium
+                            : colors.textSecondary,
                         labelStyle: const TextStyle(color: Colors.white),
                       ),
                     ],
@@ -416,7 +420,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   if (!group.isPremium)
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.gold,
+                        backgroundColor: colors.premium,
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () => grantPremium(group),
@@ -426,14 +430,14 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   IconButton(
                     tooltip: 'Delete group',
                     onPressed: () => deleteGroup(group),
-                    icon: const Icon(Icons.delete, color: Colors.white),
+                    icon: const Icon(Icons.delete_rounded, color: Colors.white),
                   ),
                 ],
               );
 
               return Container(
                 width: double.infinity,
-                color: AppColors.primary,
+                color: colors.brand,
                 padding: const EdgeInsets.all(20),
                 child: wideHeader
                     ? Row(
@@ -488,10 +492,10 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                               // Auth and can never be shown here).
                               DataCell(
                                 student.tempPassword.isEmpty
-                                    ? const Text(
+                                    ? Text(
                                         'Password changed',
                                         style: TextStyle(
-                                          color: AppColors.textGrey,
+                                          color: colors.textSecondary,
                                           fontStyle: FontStyle.italic,
                                         ),
                                       )
@@ -501,11 +505,11 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                 student.mustChangePassword
                                     ? statusChip(
                                         'Temp not changed',
-                                        AppColors.gold,
+                                        colors.premium,
                                       )
                                     : statusChip(
                                         'Student set own',
-                                        Colors.green,
+                                        colors.success,
                                       ),
                               ),
                               DataCell(
@@ -516,27 +520,27 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                       tooltip: 'Edit student',
                                       onPressed: () =>
                                           editStudent(group, student, groups),
-                                      icon: const Icon(
-                                        Icons.edit,
-                                        color: AppColors.primary,
+                                      icon: Icon(
+                                        Icons.edit_rounded,
+                                        color: colors.brand,
                                       ),
                                     ),
                                     IconButton(
                                       tooltip: 'Reset password',
                                       onPressed: () =>
                                           resetStudentPassword(group, student),
-                                      icon: const Icon(
-                                        Icons.lock_reset,
-                                        color: AppColors.primary,
+                                      icon: Icon(
+                                        Icons.lock_reset_rounded,
+                                        color: colors.brand,
                                       ),
                                     ),
                                     IconButton(
                                       tooltip: 'Delete student',
                                       onPressed: () =>
                                           deleteStudent(group, student),
-                                      icon: const Icon(
-                                        Icons.delete,
-                                        color: AppColors.danger,
+                                      icon: Icon(
+                                        Icons.delete_rounded,
+                                        color: colors.danger,
                                       ),
                                     ),
                                   ],
@@ -661,6 +665,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> grantPremium(CapstoneGroup group) async {
+    final colors = AppColors.of(context);
     // Premium has no revoke path, so granting it deserves a confirmation.
     final confirm = await showDialog<bool>(
       context: context,
@@ -677,7 +682,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.gold,
+              backgroundColor: colors.premium,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(context, true),
@@ -794,6 +799,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> deleteGroup(CapstoneGroup group) async {
+    final colors = AppColors.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -807,7 +813,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -823,6 +829,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     CapstoneGroup group,
     StudentAccount student,
   ) async {
+    final colors = AppColors.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -838,7 +845,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -995,6 +1002,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1032,7 +1040,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.background,
+            color: colors.background,
             border: Border.all(color: Colors.black12),
             borderRadius: BorderRadius.circular(8),
           ),
@@ -1042,9 +1050,9 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         ),
         const SizedBox(height: 20),
         FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+          style: FilledButton.styleFrom(backgroundColor: colors.brand),
           onPressed: submit,
-          icon: const Icon(Icons.person_add),
+          icon: const Icon(Icons.person_add_rounded),
           label: const Text('Register Student'),
         ),
       ],

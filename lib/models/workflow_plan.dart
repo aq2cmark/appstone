@@ -1,5 +1,12 @@
 import 'dart:convert';
 
+/// SharedPreferences key the generated plan is stored under.
+///
+/// Declared here rather than inside a screen because two places read it: the
+/// AI Workflow screen that owns the plan, and the Home screen that shows a
+/// read-only preview of it.
+const String workflowPlanPrefsKey = 'workflow_plan_v1';
+
 // One unit of work in the capstone timeline (usually a chapter or a phase like
 // "Prototype Development"). `weight` is a relative share of effort the AI
 // assigns; the schedule turns weights into actual day ranges.

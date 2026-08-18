@@ -1,35 +1,34 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
+import '../models/workflow_plan.dart';
 import '../services/admin_repository.dart';
 import '../services/functions_service.dart';
+import '../services/paper_check_history_service.dart';
+import '../services/practice_history_service.dart';
+import '../theme/app_breakpoints.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/app_dialog.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_shell.dart';
+import '../widgets/charts/progress_ring.dart';
 import '../widgets/icon_tile.dart';
-import '../widgets/section_header.dart';
+import '../widgets/premium_upsell.dart';
+import '../widgets/states/app_states.dart';
+import '../widgets/states/skeleton.dart';
 import 'auth_gate.dart';
 import 'login_page.dart';
 
-// Max width the dashboard content stretches to on a wide desktop before it
-// stays centered. Wide enough to use the screen (cards spread across the row
-// instead of a narrow column) but capped so it never looks stretched on an
-// ultra-wide monitor. The header and body share it so they line up.
-const dashboardContentWidth = 1360.0;
-
-// Resting height of a feature card, and how much the hovered card grows in the
-// desktop dock layout. Shared by the grid and the card so the row reserves
-// enough vertical room for the magnified card.
-const _dockBaseHeight = 272.0;
-const _hoverPeakScale = 1.16;
-// Hover lift for the wrapped/touch grid. It can't magnify a card into a
-// reserved row the way the single-row dock does, so a hovered card here grows
-// only slightly (and raises its shadow) - kept small enough that the enlarged
-// card never crosses the 20px gap and overlaps its neighbours.
-const _reflowHoverScale = 1.05;
-
-// Student dashboard after login.
-// It receives the student and group names from LoginPage after credentials pass.
-class DashboardScreen extends StatefulWidget {
+/// The student's app after login.
+///
+/// The constructor is unchanged from the pre-overhaul version so `AuthGate`
+/// and `LoginPage` keep working untouched; what changed is that it now returns
+/// the navigation shell with Home inside it, rather than being a bare page.
+class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
     super.key,
     required this.studentName,
@@ -45,333 +44,611 @@ class DashboardScreen extends StatefulWidget {
   final bool isPremium;
   final String groupId;
   final String studentId;
-  // True when the student signed in with an admin-issued temporary password.
-  // The dashboard then forces them to set their own password before continuing.
+
+  /// True when the student signed in with an admin-issued temporary password.
+  /// Home then forces them to set their own before continuing.
   final bool mustChangePassword;
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  Widget build(BuildContext context) {
+    return AppShell(
+      isPremium: isPremium,
+      home: HomeView(
+        studentName: studentName,
+        groupName: groupName,
+        isPremium: isPremium,
+        groupId: groupId,
+        studentId: studentId,
+        mustChangePassword: mustChangePassword,
+      ),
+    );
+  }
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+/// The Home destination.
+class HomeView extends StatefulWidget {
+  const HomeView({
+    super.key,
+    required this.studentName,
+    required this.groupName,
+    required this.isPremium,
+    required this.groupId,
+    required this.studentId,
+    this.mustChangePassword = false,
+  });
+
+  final String studentName;
+  final String groupName;
+  final bool isPremium;
+  final String groupId;
+  final String studentId;
+  final bool mustChangePassword;
+
+  @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> {
   bool _promptedForTempChange = false;
-  // Index of the feature card the mouse is currently over, driving the desktop
-  // "dock" magnification. Null when nothing is hovered (and always null on
-  // touch devices, which never fire hover events). Kept as a ValueNotifier so a
-  // hover only rebuilds the cards that listen to it - not the whole dashboard -
-  // which is what keeps the magnify animation smooth.
-  final ValueNotifier<int?> _hoveredFeature = ValueNotifier<int?>(null);
+
+  _HomeSummary? _summary;
+  bool _loadingSummary = true;
 
   @override
   void initState() {
     super.initState();
     if (widget.mustChangePassword) {
-      // Wait for the first frame so a dialog can be shown over the dashboard.
+      // Wait for the first frame so a dialog can be shown over Home.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _forceTempPasswordChange();
       });
     }
+    _loadSummary();
   }
 
-  @override
-  void dispose() {
-    _hoveredFeature.dispose();
-    super.dispose();
+  /// Reads what the student has already done, so Home can show state instead of
+  /// being a static grid of links.
+  ///
+  /// Everything here is read-only and comes from stores that already exist -
+  /// the saved workflow plan in SharedPreferences, and the `paper_checks` and
+  /// `practice_sessions` collections. No new data is written and no schema
+  /// changes were needed.
+  Future<void> _loadSummary() async {
+    if (!widget.isPremium) {
+      // A free group has no plan, no checks and no sessions by definition;
+      // skip three round trips that can only come back empty.
+      if (mounted) setState(() => _loadingSummary = false);
+      return;
+    }
+
+    WorkflowPlan? plan;
+    List<PaperCheckRecord> checks = const <PaperCheckRecord>[];
+    List<PracticeSessionRecord> sessions = const <PracticeSessionRecord>[];
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(workflowPlanPrefsKey);
+      plan = raw == null ? null : WorkflowPlan.decode(raw);
+    } catch (_) {
+      plan = null;
+    }
+
+    // Home is a summary: if a source is unavailable it is simply left out
+    // rather than blocking the whole screen behind an error.
+    try {
+      checks = await PaperCheckHistoryService().fetchChecks(
+        groupId: widget.groupId,
+        studentId: widget.studentId,
+      );
+    } catch (_) {
+      checks = const <PaperCheckRecord>[];
+    }
+
+    try {
+      sessions = await PracticeHistoryService().fetchSessions(
+        groupId: widget.groupId,
+        studentId: widget.studentId,
+      );
+    } catch (_) {
+      sessions = const <PracticeSessionRecord>[];
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _summary = _HomeSummary(
+        plan: plan,
+        latestCheck: checks.isNotEmpty ? checks.first : null,
+        previousCheck: checks.length > 1 ? checks[1] : null,
+        latestSession: sessions.isNotEmpty ? sessions.first : null,
+        sessionCount: sessions.length,
+      );
+      _loadingSummary = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            buildHeader(context),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-                children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: dashboardContentWidth,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'EXPLORE FEATURES',
-                            style: TextStyle(
-                              color: AppColors.textGrey,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          buildFeatureGrid(context),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+      backgroundColor: colors.background,
+      appBar: AppBar(
+        titleSpacing: context.pagePadding,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: colors.brandStrong,
+                borderRadius: AppRadius.smAll,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'A',
+                style: AppTypography.titleSmall.copyWith(color: colors.onBrand),
+              ),
+            ),
+            AppSpacing.hSm,
+            Text(
+              'Appstone',
+              style: AppTypography.titleLarge.copyWith(
+                color: colors.textPrimary,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget buildHeader(BuildContext context) {
-    return SectionHeader(
-      title: widget.studentName,
-      maxContentWidth: dashboardContentWidth,
-      chips: [
-        widget.groupName,
-        'DCT',
-        '2026-2027',
-        if (widget.isPremium) 'Premium',
-      ],
-      actions: [
-        IconButton(
-          tooltip: 'Change password',
-          onPressed: () => showChangePasswordDialog(context),
-          icon: const Icon(Icons.lock_reset, color: Colors.white),
-        ),
-        IconButton(
-          tooltip: 'Logout',
-          onPressed: () async {
-            await AdminRepository().signOut();
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.remove(studentIdPrefsKey);
-            await prefs.remove(groupIdPrefsKey);
-            if (!context.mounted) return;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginPage()),
-            );
-          },
-          icon: const Icon(Icons.logout, color: Colors.white),
-        ),
-      ],
-    );
-  }
-
-  // We aim for a comfortable card width and fit as many columns as the space
-  // allows, then size each card to fill its share of the row exactly. When
-  // every feature fits on a single row (a wide desktop), we upgrade to an
-  // interactive "dock" layout that magnifies the hovered card and shrinks its
-  // neighbours by distance. On narrower/touch layouts the cards simply reflow.
-  Widget buildFeatureGrid(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gap = 20.0;
-        const targetCardWidth = 220.0;
-        final maxWidth = constraints.maxWidth;
-        // How many ~220px cards fit across (never more than the feature count).
-        var columns = ((maxWidth + gap) / (targetCardWidth + gap)).floor();
-        columns = columns.clamp(1, _features.length);
-        // Divide the row evenly so cards fill the full width with no empty gap
-        // on the right. floor keeps rounding from bumping a card to a new row.
-        final cardWidth =
-            ((maxWidth - gap * (columns - 1)) / columns).floorToDouble();
-
-        // All features on one row -> enable the magnifying dock.
-        if (columns >= _features.length) {
-          return _buildDock(cardWidth, gap);
-        }
-
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (var i = 0; i < _features.length; i++)
-              _buildReflowCard(context, i, cardWidth),
-          ],
-        );
-      },
-    );
-  }
-
-  // The single-row desktop layout. Each card is wrapped in a MouseRegion +
-  // AnimatedScale so hovering one pops it out while its neighbours ease down in
-  // size. The row is given extra height so the magnified card isn't clipped.
-  Widget _buildDock(double cardWidth, double gap) {
-    return SizedBox(
-      height: _dockBaseHeight * _hoverPeakScale + 28,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < _features.length; i++) ...[
-            if (i > 0) SizedBox(width: gap),
-            _buildDockCard(context, i, cardWidth),
-          ],
+        actions: <Widget>[
+          AppShellActions(
+            studentName: widget.studentName,
+            groupName: widget.groupName,
+            onChangePassword: showChangePasswordDialog,
+            onLogout: _logout,
+          ),
+          SizedBox(width: context.pagePadding - AppSpacing.sm),
         ],
       ),
-    );
-  }
-
-  Widget _buildDockCard(BuildContext context, int index, double cardWidth) {
-    final feature = _features[index];
-    return MouseRegion(
-      onEnter: (_) => _hoveredFeature.value = index,
-      onExit: (_) {
-        // Guard against a stale exit clearing a newer hover.
-        if (_hoveredFeature.value == index) _hoveredFeature.value = null;
-      },
-      // Only the cards listen to the hovered index, so a hover rebuilds these
-      // five lightweight wrappers - never the header or the surrounding list -
-      // and AnimatedScale runs the frames on the GPU from there.
-      child: ValueListenableBuilder<int?>(
-        valueListenable: _hoveredFeature,
-        builder: (context, hovered, _) {
-          return AnimatedScale(
-            scale: _hoverScale(hovered, index),
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            child: AppFeatureCard(
-              title: feature.title,
-              subtitle: feature.subtitle,
-              icon: feature.icon,
-              color: feature.color,
-              width: cardWidth,
-              height: _dockBaseHeight,
-              elevated: hovered == index,
-              locked: feature.requiresPremium && !widget.isPremium,
-              onTap: () => _openFeature(context, feature),
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() => _loadingSummary = true);
+            await _loadSummary();
+          },
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              context.pagePadding,
+              AppSpacing.lg,
+              context.pagePadding,
+              AppSpacing.xxl,
             ),
-          );
-        },
+            children: <Widget>[
+              Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: AppContentWidth.max),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      StaggeredEntrance(index: 0, child: _buildHero()),
+                      AppSpacing.vXl,
+                      if (widget.isPremium) ...<Widget>[
+                        StaggeredEntrance(index: 1, child: _buildProgress()),
+                        AppSpacing.vXl,
+                      ] else ...<Widget>[
+                        StaggeredEntrance(index: 1, child: _buildFreeCard()),
+                        AppSpacing.vXl,
+                      ],
+                      StaggeredEntrance(index: 2, child: _buildFeatures()),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  // The wrapped/touch grid's counterpart to a dock card. There's no reserved
-  // row to magnify into and neighbours can't shrink meaningfully in two
-  // dimensions, so hovering just lifts this one card: a small scale-up plus the
-  // raised feature-coloured shadow. Same MouseRegion + AnimatedScale machinery
-  // (and shared hovered-index notifier) as the dock, so only the hovered card
-  // rebuilds and the frames run on the GPU.
-  Widget _buildReflowCard(BuildContext context, int index, double cardWidth) {
-    final feature = _features[index];
-    return MouseRegion(
-      onEnter: (_) => _hoveredFeature.value = index,
-      onExit: (_) {
-        if (_hoveredFeature.value == index) _hoveredFeature.value = null;
-      },
-      child: ValueListenableBuilder<int?>(
-        valueListenable: _hoveredFeature,
-        builder: (context, hovered, _) {
-          final isHovered = hovered == index;
-          return AnimatedScale(
-            scale: isHovered ? _reflowHoverScale : 1.0,
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            child: AppFeatureCard(
-              title: feature.title,
-              subtitle: feature.subtitle,
-              icon: feature.icon,
-              color: feature.color,
-              width: cardWidth,
-              height: _dockBaseHeight,
-              elevated: isHovered,
-              locked: feature.requiresPremium && !widget.isPremium,
-              onTap: () => _openFeature(context, feature),
-            ),
-          );
-        },
-      ),
+  // ---------------------------------------------------------------------------
+  // Hero
+  // ---------------------------------------------------------------------------
+
+  Widget _buildHero() {
+    final colors = AppColors.of(context);
+    final first = widget.studentName.trim().split(RegExp(r'\s+')).first;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          '${_greeting()}, $first',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.headlineLarge.copyWith(
+            color: colors.textPrimary,
+          ),
+        ),
+        AppSpacing.vSm,
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: <Widget>[
+            _Chip(label: widget.groupName, icon: Icons.groups_outlined),
+            const _Chip(label: 'DCT', icon: Icons.school_outlined),
+            const _Chip(label: '2026-2027', icon: Icons.event_outlined),
+            if (widget.isPremium)
+              _Chip(
+                label: 'Premium',
+                icon: Icons.workspace_premium_rounded,
+                color: colors.premium,
+              ),
+          ],
+        ),
+      ],
     );
   }
 
-  // Scale for a card given which one is hovered: the hovered card grows, and
-  // each step further away shrinks a little more, so the focused card visibly
-  // pops out of the row. 1.0 for every card when nothing is hovered.
-  double _hoverScale(int? hovered, int index) {
-    if (hovered == null) return 1.0;
-    switch ((hovered - index).abs()) {
-      case 0:
-        return _hoverPeakScale;
-      case 1:
-        return 0.95;
-      case 2:
-        return 0.88;
-      default:
-        return 0.85;
+  static String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Progress band, continue card, workflow preview
+  // ---------------------------------------------------------------------------
+
+  Widget _buildProgress() {
+    if (_loadingSummary) {
+      return const Skeleton(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            SkeletonBox(width: 120, height: 12),
+            SizedBox(height: AppSpacing.md),
+            SkeletonBox(height: 108, radius: AppRadius.lg),
+          ],
+        ),
+      );
     }
+
+    final summary = _summary;
+    if (summary == null || summary.isEmpty) {
+      return _EmptyProgressCard(onStart: () => _open('/ai-workflow'));
+    }
+
+    final continueTarget = summary.continueTarget;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(
+          'YOUR PROGRESS',
+          style: AppTypography.eyebrow.copyWith(color: AppColors.of(context).textTertiary),
+        ),
+        AppSpacing.vMd,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 720;
+            final tiles = <Widget>[
+              _StatTile(
+                icon: Icons.calendar_month_rounded,
+                accent: AppColors.of(context).moduleWorkflow,
+                label: 'Workflow',
+                value: summary.workflowValue,
+                caption: summary.workflowCaption,
+                progress: summary.plan?.progress,
+                onTap: () => _open('/ai-workflow'),
+              ),
+              _StatTile(
+                icon: Icons.fact_check_rounded,
+                accent: AppColors.of(context).modulePaper,
+                label: 'Latest paper check',
+                value: summary.paperValue,
+                caption: summary.paperCaption,
+                delta: summary.paperDelta,
+                onTap: () => _open('/paper-checker'),
+              ),
+              _StatTile(
+                icon: Icons.shield_rounded,
+                accent: AppColors.of(context).moduleDefense,
+                label: 'Last practice',
+                value: summary.practiceValue,
+                caption: summary.practiceCaption,
+                onTap: () => _open('/defense-practice'),
+              ),
+            ];
+
+            if (!wide) {
+              return Column(
+                children: <Widget>[
+                  for (var i = 0; i < tiles.length; i++) ...<Widget>[
+                    if (i > 0) AppSpacing.vMd,
+                    tiles[i],
+                  ],
+                ],
+              );
+            }
+
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  for (var i = 0; i < tiles.length; i++) ...<Widget>[
+                    if (i > 0) AppSpacing.hMd,
+                    Expanded(child: tiles[i]),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        if (summary.plan != null) ...<Widget>[
+          AppSpacing.vMd,
+          _WorkflowPreview(
+            plan: summary.plan!,
+            onOpen: () => _open('/ai-workflow'),
+          ),
+        ],
+        if (continueTarget != null) ...<Widget>[
+          AppSpacing.vMd,
+          _ContinueCard(
+            target: continueTarget,
+            onTap: () => _open(continueTarget.route),
+          ),
+        ],
+      ],
+    );
   }
 
-  void _openFeature(BuildContext context, _FeatureDef feature) {
+  Widget _buildFreeCard() {
+    final colors = AppColors.of(context);
+
+    return Card(
+      child: InkWell(
+        onTap: () => Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (context) => PremiumUpsellView(
+              onBack: () => Navigator.pop(context),
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Row(
+            children: <Widget>[
+              IconBadge(
+                icon: Icons.workspace_premium_rounded,
+                color: colors.premium,
+                soft: true,
+              ),
+              AppSpacing.hLg,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'You are on the free version',
+                      style: AppTypography.titleMedium.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    AppSpacing.vXs,
+                    Text(
+                      'The Capstone Manual and Title Generator are yours. See '
+                      'what premium adds.',
+                      style: AppTypography.bodySmall.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              AppSpacing.hSm,
+              Icon(Icons.chevron_right_rounded, color: colors.textTertiary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Feature grid
+  // ---------------------------------------------------------------------------
+
+  Widget _buildFeatures() {
+    final colors = AppColors.of(context);
+
+    final features = <_FeatureDef>[
+      _FeatureDef(
+        title: 'Capstone Manual',
+        subtitle: 'Guidelines, rubrics and requirements, searchable',
+        icon: Icons.menu_book_rounded,
+        color: colors.moduleManual,
+        route: '/capstone-manual',
+      ),
+      _FeatureDef(
+        title: 'Title Generator',
+        subtitle: 'Build a title from your field, users and technology',
+        icon: Icons.lightbulb_rounded,
+        color: colors.moduleTitleGen,
+        route: '/title-generator',
+      ),
+      _FeatureDef(
+        title: 'Defense Practice',
+        subtitle: 'Timed mock panel with voice answers and follow-ups',
+        icon: Icons.shield_rounded,
+        color: colors.moduleDefense,
+        route: '/defense-practice',
+        requiresPremium: true,
+      ),
+      _FeatureDef(
+        title: 'AI Workflow',
+        subtitle: 'A phase timeline built from your paper and deadline',
+        icon: Icons.calendar_month_rounded,
+        color: colors.moduleWorkflow,
+        route: '/ai-workflow',
+        requiresPremium: true,
+      ),
+      _FeatureDef(
+        title: 'Paper Checker',
+        subtitle: 'Rubric score and formatting check on your manuscript',
+        icon: Icons.fact_check_rounded,
+        color: colors.modulePaper,
+        route: '/paper-checker',
+        requiresPremium: true,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(
+          'EXPLORE FEATURES',
+          style: AppTypography.eyebrow.copyWith(color: colors.textTertiary),
+        ),
+        AppSpacing.vMd,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = AppSpacing.lg;
+            const target = 260.0;
+            var columns =
+                ((constraints.maxWidth + gap) / (target + gap)).floor();
+            columns = columns.clamp(1, features.length);
+            final width =
+                ((constraints.maxWidth - gap * (columns - 1)) / columns)
+                    .floorToDouble();
+
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: <Widget>[
+                for (final feature in features)
+                  SizedBox(
+                    width: width,
+                    child: AppFeatureCard(
+                      title: feature.title,
+                      subtitle: feature.subtitle,
+                      icon: feature.icon,
+                      color: feature.color,
+                      locked: feature.requiresPremium && !widget.isPremium,
+                      onTap: () => _openFeature(feature),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _openFeature(_FeatureDef feature) {
     if (feature.requiresPremium && !widget.isPremium) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Avail premium to access this feature.')),
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (context) => PremiumUpsellView(
+            feature: feature.title,
+            onBack: () => Navigator.pop(context),
+          ),
+        ),
       );
       return;
     }
-    Navigator.pushNamed(context, feature.route);
+    _open(feature.route);
   }
 
-  Future<void> showChangePasswordDialog(BuildContext context) async {
+  /// Opens a module.
+  ///
+  /// Four of the five modules are shell destinations, so they switch tabs -
+  /// landing in exactly the same place as tapping the tab, with the navigation
+  /// bar still there. Anything else (the Title Generator) is pushed, and gets a
+  /// back button automatically because it can pop.
+  Future<void> _open(String route) async {
+    final destination = AppShellScope.destinationForRoute(route);
+    final shell = AppShellScope.of(context);
+
+    if (destination != null && shell != null) {
+      shell.go(destination);
+      return;
+    }
+
+    await Navigator.pushNamed(context, route);
+    // Coming back from a feature is the moment the summary is most likely to be
+    // stale - a finished practice session or a new paper check just landed.
+    if (mounted && widget.isPremium) _loadSummary();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account
+  // ---------------------------------------------------------------------------
+
+  Future<void> _logout() async {
+    await AdminRepository().signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(studentIdPrefsKey);
+    await prefs.remove(groupIdPrefsKey);
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil<void>(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LoginPage()),
+      (route) => false,
+    );
+  }
+
+  // Takes no BuildContext parameter on purpose: using this State's own
+  // `context` is what lets the `mounted` checks below actually guard the
+  // context that gets used after each await.
+  Future<void> showChangePasswordDialog() async {
     final currentController = TextEditingController();
     final newController = TextEditingController();
     final confirmController = TextEditingController();
 
-    final shouldChange = await showDialog<bool>(
+    final shouldChange = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                hintText: 'Current password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: newController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                hintText: 'New password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: confirmController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                hintText: 'Confirm new password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      title: 'Change password',
+      icon: Icons.lock_reset_rounded,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TextField(
+            controller: currentController,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Current password'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
+          AppSpacing.vMd,
+          TextField(
+            controller: newController,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'New password'),
+          ),
+          AppSpacing.vMd,
+          TextField(
+            controller: confirmController,
+            obscureText: true,
+            decoration:
+                const InputDecoration(labelText: 'Confirm new password'),
           ),
         ],
       ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Save'),
+        ),
+      ],
     );
-
-    if (shouldChange != true) {
-      currentController.dispose();
-      newController.dispose();
-      confirmController.dispose();
-      return;
-    }
 
     final currentPassword = currentController.text;
     final newPassword = newController.text;
@@ -380,13 +657,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     newController.dispose();
     confirmController.dispose();
 
-    if (!context.mounted) return;
+    if (shouldChange != true) return;
+    if (!mounted) return;
+
     if (newPassword != confirmPassword) {
-      showMessage(context, 'New passwords do not match.');
+      showMessageSnack(context, 'New passwords do not match.', isError: true);
       return;
     }
     if (newPassword.length < 6) {
-      showMessage(context, 'New password must be at least 6 characters.');
+      showMessageSnack(
+        context,
+        'New password must be at least 6 characters.',
+        isError: true,
+      );
       return;
     }
 
@@ -402,27 +685,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       await user.reauthenticateWithCredential(credential);
       await user.updatePassword(newPassword);
-      if (!context.mounted) return;
-      showMessage(context, 'Password changed.');
-    } on FirebaseAuthException catch (error) {
-      if (!context.mounted) return;
-      final wrong =
-          error.code == 'wrong-password' || error.code == 'invalid-credential';
-      showMessage(
-        context,
-        wrong
-            ? 'Current password is incorrect.'
-            : (error.message ?? 'Could not change password.'),
-      );
+      if (!mounted) return;
+      showMessageSnack(context, 'Password changed.');
     } catch (error) {
-      if (!context.mounted) return;
-      showMessage(context, error.toString());
+      if (!mounted) return;
+      showErrorSnack(context, error);
     }
   }
 
-  // Non-dismissible prompt shown right after logging in with a temp password.
-  // The student cannot reach the rest of the app until they set a real one.
-  // Loops until the change succeeds so they can't skip it with a bad entry.
+  /// Non-dismissible prompt shown right after logging in with a temp password.
+  /// The student cannot reach the rest of the app until they set a real one.
+  /// Loops until the change succeeds so they can't skip it with a bad entry.
   Future<void> _forceTempPasswordChange() async {
     if (_promptedForTempChange) return;
     _promptedForTempChange = true;
@@ -438,39 +711,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
         barrierDismissible: false,
         builder: (context) => PopScope(
           canPop: false,
-          child: AlertDialog(
-            title: const Text('Set Your Password'),
+          child: AppDialog(
+            title: 'Set your password',
+            icon: Icons.key_rounded,
+            message: 'You logged in with a temporary password. Create your own '
+                'password to continue.',
             content: Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'You logged in with a temporary password. Create your own '
-                  'password to continue.',
-                ),
-                const SizedBox(height: 12),
+              children: <Widget>[
                 TextField(
                   controller: newController,
                   obscureText: true,
                   decoration: const InputDecoration(
-                    hintText: 'New password (min 6 characters)',
-                    border: OutlineInputBorder(),
+                    labelText: 'New password (min 6 characters)',
                   ),
                 ),
-                const SizedBox(height: 12),
+                AppSpacing.vMd,
                 TextField(
                   controller: confirmController,
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    hintText: 'Confirm new password',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration:
+                      const InputDecoration(labelText: 'Confirm new password'),
                 ),
               ],
             ),
-            actions: [
+            actions: <Widget>[
               FilledButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Save Password'),
+                child: const Text('Save password'),
               ),
             ],
           ),
@@ -484,11 +752,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (!mounted) return;
       if (newPassword != confirmPassword) {
-        showMessage(context, 'Passwords do not match. Please try again.');
+        showMessageSnack(
+          context,
+          'Passwords do not match. Please try again.',
+          isError: true,
+        );
         continue;
       }
       if (newPassword.length < 6) {
-        showMessage(context, 'Password must be at least 6 characters.');
+        showMessageSnack(
+          context,
+          'Password must be at least 6 characters.',
+          isError: true,
+        );
         continue;
       }
 
@@ -503,72 +779,587 @@ class _DashboardScreenState extends State<DashboardScreen> {
           groupId: widget.groupId,
         );
         done = true;
-        if (mounted) showMessage(context, 'Password updated. You are all set!');
-      } on FirebaseAuthException catch (error) {
         if (mounted) {
-          showMessage(
-            context,
-            error.code == 'requires-recent-login'
-                ? 'Please log in again, then set your password.'
-                : (error.message ?? 'Could not update password.'),
-          );
+          showMessageSnack(context, 'Password updated. You are all set!');
         }
       } catch (error) {
-        if (mounted) showMessage(context, error.toString());
+        if (mounted) showErrorSnack(context, error);
       }
     }
   }
-
-  void showMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
 }
 
-// The 5 dashboard features. Each gets a distinct on-brand color so the grid
-// reads clearly at a glance instead of repeating the same 2-3 hues.
-const _features = [
-  _FeatureDef(
-    title: 'Capstone Manual',
-    subtitle: 'Read guidelines and requirements',
-    icon: Icons.menu_book_outlined,
-    color: AppColors.primary,
-    route: '/capstone-manual',
-  ),
-  _FeatureDef(
-    title: 'Title Generator',
-    subtitle: 'AI-powered topic ideas',
-    icon: Icons.lightbulb_outline,
-    color: AppColors.gold,
-    route: '/title-generator',
-  ),
-  _FeatureDef(
-    title: 'Defense Practice',
-    subtitle: 'Gamified simulation mode',
-    icon: Icons.shield_outlined,
-    color: AppColors.primaryDark,
-    route: '/defense-practice',
-    requiresPremium: true,
-  ),
-  _FeatureDef(
-    title: 'AI Workflow',
-    subtitle: 'Plan and track your timeline',
-    icon: Icons.calendar_month_outlined,
-    color: AppColors.greyDark,
-    route: '/ai-workflow',
-    requiresPremium: true,
-  ),
-  _FeatureDef(
-    title: 'Paper Checker',
-    subtitle: 'Check compliance and format',
-    icon: Icons.description_outlined,
-    color: AppColors.grey,
-    route: '/paper-checker',
-    requiresPremium: true,
-  ),
-];
+// -----------------------------------------------------------------------------
+// Summary model
+// -----------------------------------------------------------------------------
+
+/// What Home knows about the student's existing work.
+class _HomeSummary {
+  const _HomeSummary({
+    this.plan,
+    this.latestCheck,
+    this.previousCheck,
+    this.latestSession,
+    this.sessionCount = 0,
+  });
+
+  final WorkflowPlan? plan;
+  final PaperCheckRecord? latestCheck;
+  final PaperCheckRecord? previousCheck;
+  final PracticeSessionRecord? latestSession;
+  final int sessionCount;
+
+  bool get isEmpty =>
+      plan == null && latestCheck == null && latestSession == null;
+
+  String get workflowValue {
+    final current = plan;
+    if (current == null) return '-';
+    final days = current.daysRemaining();
+    if (days < 0) return 'Overdue';
+    return '$days';
+  }
+
+  String get workflowCaption {
+    final current = plan;
+    if (current == null) return 'No plan yet';
+    final days = current.daysRemaining();
+    final phases = '${current.doneCount}/${current.totalCount} phases done';
+    if (days < 0) return 'Past deadline - $phases';
+    return '${days == 1 ? 'day' : 'days'} left - $phases';
+  }
+
+  String get paperValue {
+    final check = latestCheck;
+    if (check == null) return '-';
+    return '${check.totalScore}/${check.maxScore}';
+  }
+
+  String get paperCaption {
+    final check = latestCheck;
+    if (check == null) return 'No checks yet';
+    return check.verdict;
+  }
+
+  /// Change in score against the previous check, or null when there is nothing
+  /// to compare against.
+  int? get paperDelta {
+    final current = latestCheck;
+    final previous = previousCheck;
+    if (current == null || previous == null) return null;
+    return current.totalScore - previous.totalScore;
+  }
+
+  String get practiceValue {
+    final session = latestSession;
+    if (session == null) return '-';
+    return '${session.overallScore}%';
+  }
+
+  String get practiceCaption {
+    final session = latestSession;
+    if (session == null) return 'No sessions yet';
+    final plural = sessionCount == 1 ? 'session' : 'sessions';
+    return '${session.sessionType} - $sessionCount $plural';
+  }
+
+  /// The single most useful thing to pick back up.
+  ///
+  /// Only ever points at a screen the student can already reach from the
+  /// feature grid; it is a shortcut, not a new capability.
+  _ContinueTarget? get continueTarget {
+    final current = plan;
+    if (current != null && current.doneCount < current.totalCount) {
+      final schedule = current.schedule();
+      final next = schedule
+          .where((scheduled) => !scheduled.phase.done)
+          .firstOrNull;
+      return _ContinueTarget(
+        title: next == null
+            ? 'Continue your workflow'
+            : 'Next up: ${next.phase.name}',
+        subtitle: next == null
+            ? '${current.doneCount} of ${current.totalCount} phases done'
+            : next.isOverdue
+                ? 'This phase is behind schedule'
+                : 'Scheduled through ${DateFormat('MMM d').format(next.end)}',
+        icon: Icons.calendar_month_rounded,
+        route: '/ai-workflow',
+      );
+    }
+    if (latestSession != null) {
+      return const _ContinueTarget(
+        title: 'Run another defense practice',
+        subtitle: 'Keep your answers sharp before the real panel',
+        icon: Icons.shield_rounded,
+        route: '/defense-practice',
+      );
+    }
+    if (latestCheck != null) {
+      return const _ContinueTarget(
+        title: 'Check your latest draft',
+        subtitle: 'See what changed since your last submission',
+        icon: Icons.fact_check_rounded,
+        route: '/paper-checker',
+      );
+    }
+    return null;
+  }
+}
+
+class _ContinueTarget {
+  const _ContinueTarget({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.route,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String route;
+}
+
+// -----------------------------------------------------------------------------
+// Pieces
+// -----------------------------------------------------------------------------
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.accent,
+    required this.label,
+    required this.value,
+    required this.caption,
+    this.progress,
+    this.delta,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String label;
+  final String value;
+  final String caption;
+  final double? progress;
+  final int? delta;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              if (progress != null)
+                ProgressRing(
+                  value: progress!.clamp(0.0, 1.0),
+                  size: 44,
+                  strokeWidth: 5,
+                  color: accent,
+                  child: Icon(icon, size: 18, color: accent),
+                )
+              else
+                IconBadge(icon: icon, color: accent, size: 44, soft: true),
+              AppSpacing.hMd,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.labelSmall.copyWith(
+                        color: colors.textTertiary,
+                      ),
+                    ),
+                    AppSpacing.vXs,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            value,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.headlineMedium.copyWith(
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (delta != null && delta != 0) ...<Widget>[
+                          AppSpacing.hXs,
+                          _DeltaPill(delta: delta!),
+                        ],
+                      ],
+                    ),
+                    AppSpacing.vXs,
+                    Text(
+                      caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeltaPill extends StatelessWidget {
+  const _DeltaPill({required this.delta});
+
+  final int delta;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final up = delta > 0;
+    final tone = up ? colors.success : colors.danger;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.tint(tone),
+        borderRadius: AppRadius.pillAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+            size: 12,
+            color: tone,
+          ),
+          Text(
+            '${delta.abs()}',
+            style: AppTypography.labelSmall.copyWith(color: tone),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only preview of the saved workflow plan.
+///
+/// Built entirely from `WorkflowPlan.schedule()`, which already computes phase
+/// windows, day counts and overdue flags - nothing new is calculated here.
+class _WorkflowPreview extends StatelessWidget {
+  const _WorkflowPreview({required this.plan, required this.onOpen});
+
+  final WorkflowPlan plan;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final schedule = plan.schedule();
+    if (schedule.isEmpty) return const SizedBox.shrink();
+
+    final totalDays = schedule.fold<int>(0, (sum, s) => sum + s.days);
+    final onTrack = plan.isOnTrack();
+
+    return Card(
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      'Capstone timeline',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.titleMedium.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  AppSpacing.hSm,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors
+                          .tint(onTrack ? colors.success : colors.warning),
+                      borderRadius: AppRadius.pillAll,
+                    ),
+                    child: Text(
+                      onTrack ? 'On track' : 'Behind schedule',
+                      style: AppTypography.labelSmall.copyWith(
+                        color: onTrack ? colors.success : colors.warning,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              AppSpacing.vMd,
+              // Each phase gets a slice of the bar proportional to its scheduled
+              // days, so the shape of the bar is the shape of the plan.
+              ClipRRect(
+                borderRadius: AppRadius.smAll,
+                child: SizedBox(
+                  height: 10,
+                  child: Row(
+                    children: <Widget>[
+                      for (final scheduled in schedule)
+                        Expanded(
+                          flex: totalDays == 0 ? 1 : scheduled.days.clamp(1, 9999),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 2),
+                            child: ColoredBox(
+                              color: scheduled.phase.done
+                                  ? colors.success
+                                  : scheduled.isOverdue
+                                      ? colors.danger
+                                      : colors.tint(colors.moduleWorkflow),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              AppSpacing.vMd,
+              Wrap(
+                spacing: AppSpacing.md,
+                runSpacing: AppSpacing.xs,
+                children: <Widget>[
+                  _MetaText(
+                    icon: Icons.flag_outlined,
+                    text: DateFormat('MMM d, yyyy').format(plan.deadline),
+                  ),
+                  _MetaText(
+                    icon: Icons.timelapse_rounded,
+                    text: '${plan.totalCount} phases',
+                  ),
+                  if (plan.paperName != null)
+                    _MetaText(
+                      icon: Icons.description_outlined,
+                      text: plan.paperName!,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaText extends StatelessWidget {
+  const _MetaText({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    // Bounded on purpose: an unbounded Text inside a Row inside a Wrap is
+    // exactly the pattern that overflows on the audit log and session history
+    // screens when a value runs long.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: colors.textTertiary),
+          AppSpacing.hXs,
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContinueCard extends StatelessWidget {
+  const _ContinueCard({required this.target, required this.onTap});
+
+  final _ContinueTarget target;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return Material(
+      color: colors.brandSoft,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadius.lgAll,
+        side: BorderSide(color: colors.tintBorder(colors.brand)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Row(
+            children: <Widget>[
+              Icon(target.icon, color: colors.brand, size: AppSize.iconLg),
+              AppSpacing.hLg,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'CONTINUE WHERE YOU LEFT OFF',
+                      style: AppTypography.eyebrow.copyWith(
+                        color: colors.brand,
+                      ),
+                    ),
+                    AppSpacing.vXs,
+                    Text(
+                      target.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.titleMedium.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      target.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              AppSpacing.hSm,
+              Icon(Icons.arrow_forward_rounded, color: colors.brand),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyProgressCard extends StatelessWidget {
+  const _EmptyProgressCard({required this.onStart});
+
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
+          children: <Widget>[
+            IconBadge(
+              icon: Icons.rocket_launch_rounded,
+              color: colors.moduleWorkflow,
+              soft: true,
+            ),
+            AppSpacing.hLg,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Nothing tracked yet',
+                    style: AppTypography.titleMedium.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  AppSpacing.vXs,
+                  Text(
+                    'Build a workflow plan, check a draft, or run a practice '
+                    'session and your progress will appear here.',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AppSpacing.hSm,
+            FilledButton(onPressed: onStart, child: const Text('Start')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.icon, this.color});
+
+  final String label;
+  final IconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final tone = color ?? colors.textSecondary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs + 2,
+      ),
+      decoration: BoxDecoration(
+        color: color == null ? colors.surface : colors.tint(tone),
+        borderRadius: AppRadius.pillAll,
+        border: Border.all(
+          color: color == null ? colors.border : colors.tintBorder(tone),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 14, color: tone),
+          AppSpacing.hXs,
+          Text(
+            label,
+            style: AppTypography.labelSmall.copyWith(color: tone),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _FeatureDef {
   const _FeatureDef({

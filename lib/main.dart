@@ -1,4 +1,3 @@
-import 'package:appstone/app_colors.dart';
 import 'package:appstone/firebase_options.dart';
 import 'package:appstone/screens/auth_gate.dart';
 import 'package:appstone/screens/capstone_manual_screen.dart';
@@ -10,6 +9,9 @@ import 'package:appstone/screens/title_generator_screen.dart';
 import 'package:appstone/screens/ai_workflow_screen.dart';
 import 'package:appstone/screens/paper_checker_screen.dart';
 import 'package:appstone/screens/paper_check_history_screen.dart';
+import 'package:appstone/theme/app_motion.dart';
+import 'package:appstone/theme/app_theme.dart';
+import 'package:appstone/theme/theme_controller.dart';
 import 'package:appstone/widgets/auth_guard.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,9 @@ import 'package:flutter/material.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Read the saved light/dark preference before the first frame, so the app
+  // never flashes the wrong background on startup.
+  await ThemeController.instance.load();
   runApp(const MainApp());
 }
 
@@ -29,109 +34,48 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The whole app rebuilds when the theme preference changes; nothing else
+    // has to listen. See lib/theme/theme_controller.dart.
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance,
+      builder: (context, themeMode, _) => _buildApp(themeMode),
+    );
+  }
+
+  Widget _buildApp(ThemeMode themeMode) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Appstone',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-        scaffoldBackgroundColor: AppColors.background,
-        useMaterial3: true,
-        // One shared card look for the whole app: any Card() that doesn't
-        // override color/shape gets this, so admin and student screens
-        // that forgot to set it still match everywhere else.
-        cardTheme: const CardThemeData(
-          color: AppColors.white,
-          elevation: 1,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(18)),
-          ),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          centerTitle: false,
-        ),
-        // One consistent, branded look for every dialog, text field, and button
-        // so the popups (forgot password, create group, invite admin, edit
-        // student, confirmations, etc.) all match the app instead of falling
-        // back to default Material styling.
-        dialogTheme: DialogThemeData(
-          backgroundColor: AppColors.white,
-          surfaceTintColor: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          titleTextStyle: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textDark,
-          ),
-          contentTextStyle: const TextStyle(
-            fontSize: 14.5,
-            color: AppColors.textDark,
-            height: 1.4,
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.background,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 14,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.black12),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.black12),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.primary, width: 2),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+      // All design tokens live in lib/theme/. Screens must not define colours,
+      // type, spacing or radii of their own - see CLAUDE.md.
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: themeMode,
+      // Browser and OS accessibility settings can push text scale past 2x,
+      // which overflowed several fixed-height layouts. Clamping keeps the app
+      // legible and usable for readers who need larger type without letting a
+      // 3x setting shred the layout.
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        return MediaQuery(
+          data: media.copyWith(
+            textScaler: media.textScaler.clamp(
+              minScaleFactor: 0.85,
+              maxScaleFactor: 1.6,
             ),
           ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+          // Toggling light/dark swaps every colour in the app at once. Without
+          // this the switch lands as a hard flash, which is unpleasant at
+          // night - and the toggle now sits in every app bar, so it is the
+          // control people trigger most.
+          child: AnimatedTheme(
+            data: Theme.of(context),
+            duration: AppMotion.respect(context, AppMotion.slow),
+            curve: AppMotion.standardCurve,
+            child: child ?? const SizedBox.shrink(),
           ),
-        ),
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.primary,
-            side: const BorderSide(color: AppColors.primary),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(foregroundColor: AppColors.primary),
-        ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
+        );
+      },
       home: const AuthGate(),
       // Named routes let dashboard cards open screens by route name.
       // Add future feature pages here when your group creates new screens.

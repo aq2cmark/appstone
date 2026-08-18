@@ -5,12 +5,18 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:record/record.dart';
 
-import '../app_colors.dart';
 import '../services/defense_ai_service.dart';
 import '../services/defense_context_service.dart';
+import '../services/practice_history_service.dart';
 import '../services/recording_store.dart';
 import '../services/speech_transcription_service.dart';
-import '../services/practice_history_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/app_dialog.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import 'auth_gate.dart';
 import 'defense_results_screen.dart';
 
@@ -284,7 +290,7 @@ class _DefensePracticeSessionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final progress = totalAsked / widget.maxQuestions;
+    final colors = AppColors.of(context);
 
     return PopScope(
       // Intercept back/exit so we can warn that leaving still uses a session.
@@ -296,179 +302,221 @@ class _DefensePracticeSessionScreenState
         if (!mounted || !leave) return;
         navigator.pop();
       },
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          title: Text(widget.title),
+      child: AppScaffold(
+        title: widget.title,
+        accent: colors.moduleDefense,
+        maxContentWidth: AppContentWidth.wide,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Leave practice',
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.maybePop(context),
         ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          'Question $totalAsked (of up to ${widget.maxQuestions})',
-                        ),
-                      ),
-                      buildTimerChip(),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: progress,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(height: 16),
-                  if (projectContext.isNotEmpty) buildContextNotice(),
-                  if (inGrace) buildGraceBanner(),
-                  buildQuestionCard(),
-                  const SizedBox(height: 12),
-                  buildTipsCard(),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: answerController,
-                    maxLines: 5,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText:
-                          'Your answer (${answerController.text.length} chars)',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: isEvaluating || transcribing
-                        ? null
-                        : toggleRecording,
-                    // Transcription takes a beat, and the student needs to see
-                    // that something is happening to their answer.
-                    icon: transcribing
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(recording ? Icons.stop : Icons.mic),
-                    label: Text(
-                      transcribing
-                          ? 'Transcribing...'
-                          : recording
-                          ? 'Stop and Transcribe'
-                          : 'Answer with Voice',
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    speechStatus,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: recording || transcribing
-                          ? AppColors.primary
-                          : AppColors.textGrey,
-                      fontWeight: recording || transcribing
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: isEvaluating ? null : submitAnswer,
-                    child: isEvaluating
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Submit Answer'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        // On a wide window the answer box and the panel context sit side by
+        // side, so the timer and the tips stay visible while typing instead of
+        // scrolling off the top - which is exactly when a student needs them.
+        body: AppTwoColumn(
+          sideWidth: 320,
+          main: _buildMainColumn(),
+          side: _buildSideColumn(),
+        ),
       ),
+    );
+  }
+
+  Widget _buildMainColumn() {
+    final colors = AppColors.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (projectContext.isNotEmpty) ...<Widget>[
+          buildContextNotice(),
+          AppSpacing.vMd,
+        ],
+        if (inGrace) ...<Widget>[buildGraceBanner(), AppSpacing.vMd],
+        buildQuestionCard(),
+        AppSpacing.vLg,
+        TextField(
+          controller: answerController,
+          maxLines: 6,
+          minLines: 4,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            labelText: 'Your answer',
+            alignLabelWithHint: true,
+            hintText: 'Type your answer, or use the microphone below.',
+            counterText: '${answerController.text.length} characters',
+          ),
         ),
+        AppSpacing.vMd,
+        OutlinedButton.icon(
+          onPressed: isEvaluating || transcribing ? null : toggleRecording,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: recording ? colors.danger : null,
+            side: recording ? BorderSide(color: colors.danger) : null,
+          ),
+          // Transcription takes a beat, and the student needs to see that
+          // something is happening to their answer.
+          icon: transcribing
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : recording
+                  ? _RecordingPulse(color: colors.danger)
+                  : const Icon(Icons.mic_rounded),
+          label: Text(
+            transcribing
+                ? 'Transcribing...'
+                : recording
+                    ? 'Stop and transcribe'
+                    : 'Answer with voice',
+          ),
+        ),
+        AppSpacing.vSm,
+        Text(
+          speechStatus,
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySmall.copyWith(
+            color: recording || transcribing
+                ? colors.moduleDefense
+                : colors.textTertiary,
+          ),
+        ),
+        AppSpacing.vLg,
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            backgroundColor: colors.moduleDefense,
+          ),
+          onPressed: isEvaluating ? null : submitAnswer,
+          icon: isEvaluating
+              ? SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.onColor,
+                  ),
+                )
+              : const Icon(Icons.send_rounded),
+          label: Text(isEvaluating ? 'Panel is reading...' : 'Submit answer'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSideColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        buildProgressCard(),
+        AppSpacing.vMd,
+        buildTipsCard(),
+      ],
     );
   }
 
   // Asks the student to confirm leaving mid-practice, warning that it still
   // counts as one of their daily defense practice sessions.
   Future<bool> _confirmLeave() async {
-    final result = await showDialog<bool>(
+    final colors = AppColors.of(context);
+    final result = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Leave practice?'),
-        content: const Text(
-          'Leaving ends this practice now. It still counts as one of your daily '
-          'defense practice sessions, and your progress will not be saved.',
+      title: 'Leave practice?',
+      icon: Icons.exit_to_app_rounded,
+      accent: colors.danger,
+      message: 'Leaving ends this practice now. It still counts as one of your '
+          'daily defense practice sessions, and your progress will not be '
+          'saved.',
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Stay'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Stay'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Leave'),
-          ),
-        ],
-      ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: colors.danger),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Leave'),
+        ),
+      ],
     );
     return result ?? false;
   }
 
-  // Countdown pill next to the question counter. Primary while there's
-  // plenty of time, gold in the last 30 seconds, red during the grace period.
-  Widget buildTimerChip() {
+  // Question counter, countdown ring and progress track in one card.
+  Widget buildProgressCard() {
+    final colors = AppColors.of(context);
+    final progress = (totalAsked / widget.maxQuestions).clamp(0.0, 1.0);
     final minutes = secondsLeft ~/ 60;
     final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
-    final color = inGrace
-        ? AppColors.danger
-        : secondsLeft <= 30
-        ? AppColors.gold
-        : AppColors.primary;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            inGrace ? Icons.timer_off_outlined : Icons.timer_outlined,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$minutes:$seconds',
-            style: TextStyle(color: color, fontWeight: FontWeight.bold),
-          ),
-        ],
+    // Calm while there is room, warning under 30s, danger during the grace
+    // period - the one place in the app where colour carries urgency.
+    final tone = inGrace
+        ? colors.danger
+        : secondsLeft <= 30
+            ? colors.warning
+            : colors.moduleDefense;
+
+    // Fraction of THIS question's time remaining, so the ring drains as the
+    // clock does. During grace the ring stays full in red rather than
+    // implying there is time left.
+    final timeFraction = inGrace
+        ? 1.0
+        : (widget.secondsPerQuestion == 0
+            ? 0.0
+            : secondsLeft / widget.secondsPerQuestion);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                _TimerRing(
+                  value: timeFraction.clamp(0.0, 1.0),
+                  color: tone,
+                  pulsing: inGrace || (secondsLeft <= 30 && secondsLeft > 0),
+                  label: '$minutes:$seconds',
+                ),
+                AppSpacing.hLg,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'QUESTION $totalAsked',
+                        style: AppTypography.eyebrow.copyWith(color: tone),
+                      ),
+                      AppSpacing.vXs,
+                      Text(
+                        'of up to ${widget.maxQuestions}',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            AppSpacing.vLg,
+            ClipRRect(
+              borderRadius: AppRadius.smAll,
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8,
+                color: colors.moduleDefense,
+                backgroundColor: colors.surfaceSunken,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -477,81 +525,107 @@ class _DefensePracticeSessionScreenState
   // project-specific follow-up doesn't come as a surprise. Only shown when there
   // is context to use.
   Widget buildContextNotice() {
+    final colors = AppColors.of(context);
     final title = projectContext.projectTitle.trim();
-    return Card(
-      color: AppColors.primary.withValues(alpha: 0.06),
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title.isEmpty
-                    ? 'The panel is using your saved project context.'
-                    : 'The panel is asking about your project: $title',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        color: colors.tint(colors.moduleDefense),
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: colors.tintBorder(colors.moduleDefense)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            Icons.auto_awesome_rounded,
+            size: AppSize.iconSm,
+            color: colors.moduleDefense,
+          ),
+          AppSpacing.hMd,
+          Expanded(
+            child: Text(
+              title.isEmpty
+                  ? 'The panel is using your saved project context.'
+                  : 'The panel is asking about your project: $title',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.bodySmall.copyWith(
+                color: colors.moduleDefense,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget buildGraceBanner() {
-    return Card(
-      color: AppColors.danger.withValues(alpha: 0.08),
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                "Time's up! Your answer submits automatically in "
-                '$secondsLeft second${secondsLeft == 1 ? '' : 's'}.',
-                style: const TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+    final colors = AppColors.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.dangerTint,
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: colors.tintBorder(colors.danger)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.warning_amber_rounded, color: colors.danger),
+          AppSpacing.hMd,
+          Expanded(
+            child: Text(
+              'Time is up. Your answer submits automatically in '
+              '$secondsLeft second${secondsLeft == 1 ? '' : 's'}.',
+              style: AppTypography.titleSmall.copyWith(color: colors.danger),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget buildQuestionCard() {
+    final colors = AppColors.of(context);
+    final tone = isFollowUp ? colors.warning : colors.moduleDefense;
+
     return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isFollowUp ? 'FOLLOW-UP QUESTION' : 'QUESTION',
-              style: TextStyle(
-                color: isFollowUp ? AppColors.gold : AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  isFollowUp
+                      ? Icons.subdirectory_arrow_right_rounded
+                      : Icons.record_voice_over_rounded,
+                  size: AppSize.iconSm,
+                  color: tone,
+                ),
+                AppSpacing.hSm,
+                Text(
+                  isFollowUp ? 'FOLLOW-UP QUESTION' : 'PANEL QUESTION',
+                  style: AppTypography.eyebrow.copyWith(color: tone),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              currentQuestion,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            AppSpacing.vMd,
+            // Keyed on the question so a new one cross-fades in rather than
+            // silently swapping under the reader's eyes.
+            SharedAxisSwitcher(
+              child: Text(
+                currentQuestion,
+                key: ValueKey<String>(currentQuestion),
+                style: AppTypography.headlineSmall.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
             ),
           ],
         ),
@@ -560,22 +634,63 @@ class _DefensePracticeSessionScreenState
   }
 
   Widget buildTipsCard() {
-    return Card(
-      color: const Color(0xFFFFF8E7),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tips for answering',
-              style: TextStyle(fontWeight: FontWeight.bold),
+    final colors = AppColors.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.warningTint,
+        borderRadius: AppRadius.lgAll,
+        border: Border.all(color: colors.tintBorder(colors.warning)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.tips_and_updates_outlined,
+                size: AppSize.iconSm,
+                color: colors.warning,
+              ),
+              AppSpacing.hSm,
+              Text(
+                'TIPS FOR ANSWERING',
+                style: AppTypography.eyebrow.copyWith(color: colors.warning),
+              ),
+            ],
+          ),
+          AppSpacing.vMd,
+          for (final tip in tips)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.warning,
+                      ),
+                    ),
+                  ),
+                  AppSpacing.hSm,
+                  Expanded(
+                    child: Text(
+                      tip,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            for (final tip in tips) Text('- $tip'),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -860,5 +975,193 @@ class _DefensePracticeSessionScreenState
     } catch (_) {
       // History is a nice-to-have; the results screen still shows.
     }
+  }
+}
+
+/// The per-question countdown, drawn as a draining ring.
+///
+/// This is the expressive motion register the paper calls "gamified": the ring
+/// empties as the clock runs down, and once the student is inside the last 30
+/// seconds it breathes so the pressure is felt without a sound or a jolt. It
+/// holds still for anyone who has asked their system for reduced motion.
+class _TimerRing extends StatefulWidget {
+  const _TimerRing({
+    required this.value,
+    required this.color,
+    required this.label,
+    required this.pulsing,
+  });
+
+  /// Fraction of this question's time still remaining, 0..1.
+  final double value;
+  final Color color;
+  final String label;
+  final bool pulsing;
+
+  @override
+  State<_TimerRing> createState() => _TimerRingState();
+}
+
+class _TimerRingState extends State<_TimerRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+    lowerBound: 0.94,
+    upperBound: 1.0,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TimerRing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pulsing != widget.pulsing) _syncPulse();
+  }
+
+  void _syncPulse() {
+    if (widget.pulsing && !AppMotion.reduced(context)) {
+      _pulse.repeat(reverse: true);
+    } else {
+      _pulse.stop();
+      _pulse.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return ScaleTransition(
+      scale: _pulse,
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            // Painted directly rather than through ProgressRing: the countdown
+            // must track the clock tick-for-tick, and an implicit tween would
+            // always be animating a second behind the number in the middle.
+            CustomPaint(
+              size: const Size.square(64),
+              painter: _TimerRingPainter(
+                value: widget.value,
+                color: widget.color,
+                trackColor: colors.surfaceSunken,
+              ),
+            ),
+            Text(
+              widget.label,
+              style: AppTypography.titleSmall.copyWith(color: widget.color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimerRingPainter extends CustomPainter {
+  const _TimerRingPainter({
+    required this.value,
+    required this.color,
+    required this.trackColor,
+  });
+
+  final double value;
+  final Color color;
+  final Color trackColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 5.0;
+    final rect = Offset.zero & size;
+    final center = rect.center;
+    final radius = (size.shortestSide - stroke) / 2;
+
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = trackColor
+      ..isAntiAlias = true;
+    canvas.drawCircle(center, radius, track);
+
+    if (value <= 0) return;
+
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color
+      ..isAntiAlias = true;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -1.5707963267948966, // 12 o'clock
+      6.283185307179586 * value.clamp(0.0, 1.0),
+      false,
+      arc,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TimerRingPainter old) =>
+      old.value != value ||
+      old.color != color ||
+      old.trackColor != trackColor;
+}
+
+/// A softly pulsing dot shown in place of the mic icon while recording, so the
+/// student can tell at a glance that the microphone is live.
+class _RecordingPulse extends StatefulWidget {
+  const _RecordingPulse({required this.color});
+
+  final Color color;
+
+  @override
+  State<_RecordingPulse> createState() => _RecordingPulseState();
+}
+
+class _RecordingPulseState extends State<_RecordingPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+    lowerBound: 0.55,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!AppMotion.reduced(context)) {
+      _controller.repeat(reverse: true);
+    } else {
+      _controller.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller,
+      child: Icon(Icons.stop_circle_rounded, color: widget.color),
+    );
   }
 }

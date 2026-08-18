@@ -3,7 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../models/workflow_plan.dart';
 import '../services/document_text_extractor.dart';
 import '../services/workflow_service.dart';
@@ -21,7 +22,8 @@ class AIWorkflowScreen extends StatefulWidget {
 }
 
 class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
-  static const _prefsKey = 'workflow_plan_v1';
+  // Shared with the Home screen's plan preview - see models/workflow_plan.dart.
+  static const _prefsKey = workflowPlanPrefsKey;
 
   final _extractor = DocumentTextExtractor();
   final _service = WorkflowService();
@@ -69,18 +71,16 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('AI Workflow'),
+            appBar: AppBar(
+                title: const Text('AI Workflow'),
         actions: [
           if (_plan != null)
             IconButton(
               tooltip: 'Start over',
               onPressed: _confirmStartOver,
-              icon: const Icon(Icons.restart_alt),
+              icon: const Icon(Icons.restart_alt_rounded),
             ),
+          const ThemeToggleButton(),
         ],
       ),
       body: _loading
@@ -102,6 +102,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   // ---- Setup form (no plan yet) --------------------------------------------
 
   Widget _buildSetup() {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -112,8 +113,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         ),
         const SizedBox(height: 16),
         Card(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
+                    shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
           child: Padding(
@@ -130,12 +130,12 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                   _selectedPaper?.name ??
                       'PDF, DOCX, or TXT - the AI reads it to see what is done '
                           'and what is left.',
-                  style: const TextStyle(color: AppColors.textGrey),
+                  style: TextStyle(color: colors.textSecondary),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _generating ? null : _pickPaper,
-                  icon: const Icon(Icons.upload_file),
+                  icon: const Icon(Icons.upload_file_rounded),
                   label: Text(
                     _selectedPaper == null ? 'Select Paper' : 'Change Paper',
                   ),
@@ -146,8 +146,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         ),
         const SizedBox(height: 16),
         Card(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
+                    shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
           child: Padding(
@@ -162,7 +161,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: _generating ? null : _pickDeadline,
-                  icon: const Icon(Icons.event),
+                  icon: const Icon(Icons.event_rounded),
                   label: Text(
                     _deadline == null
                         ? 'Pick your deadline'
@@ -176,7 +175,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                       : _daysUntilDeadline() == 1
                       ? 'Tomorrow - 1 day to work with.'
                       : '${_daysUntilDeadline()} days to work with.',
-                  style: const TextStyle(color: AppColors.textGrey),
+                  style: TextStyle(color: colors.textSecondary),
                 ),
               ],
             ),
@@ -189,7 +188,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         const SizedBox(height: 16),
         FilledButton.icon(
           style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
+            backgroundColor: colors.brand,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
           onPressed: _generating ? null : _generate,
@@ -202,7 +201,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                     color: Colors.white,
                   ),
                 )
-              : const Icon(Icons.auto_awesome),
+              : const Icon(Icons.auto_awesome_rounded),
           label: Text(
             _generating ? 'Building timeline...' : 'Generate Timeline',
           ),
@@ -228,7 +227,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: _confirmStartOver,
-          icon: const Icon(Icons.restart_alt, size: 18),
+          icon: const Icon(Icons.restart_alt_rounded, size: 18),
           label: const Text('Start a new plan'),
         ),
       ],
@@ -236,6 +235,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   }
 
   Widget _buildStatusCard(WorkflowPlan plan, int daysLeft, bool allDone) {
+    final colors = AppColors.of(context);
     final onTrack = plan.isOnTrack();
     final projected = plan.projectedFinish();
 
@@ -243,15 +243,15 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
     final IconData bannerIcon;
     final String bannerText;
     if (allDone) {
-      bannerColor = Colors.green.shade700;
+      bannerColor = colors.success;
       bannerIcon = Icons.celebration;
       bannerText = 'All phases complete. Great work!';
     } else if (onTrack) {
-      bannerColor = Colors.green.shade700;
-      bannerIcon = Icons.trending_up;
+      bannerColor = colors.success;
+      bannerIcon = Icons.trending_up_rounded;
       bannerText = 'On track - projected finish ${_dateFmt.format(projected)}.';
     } else {
-      bannerColor = AppColors.primary;
+      bannerColor = colors.brand;
       bannerIcon = Icons.warning_amber_rounded;
       bannerText =
           'Behind schedule - projected finish ${_dateFmt.format(projected)}, '
@@ -259,8 +259,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
     }
 
     return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -269,16 +268,16 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
             if (plan.paperName != null)
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.description_outlined,
                     size: 18,
-                    color: AppColors.textGrey,
+                    color: colors.textSecondary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       plan.paperName!,
-                      style: const TextStyle(color: AppColors.textGrey),
+                      style: TextStyle(color: colors.textSecondary),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -290,10 +289,10 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               children: [
                 Text(
                   '${plan.doneCount}/${plan.totalCount}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: colors.brand,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -315,8 +314,8 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                           : '${-daysLeft} day(s) overdue',
                       style: TextStyle(
                         color: daysLeft >= 0
-                            ? AppColors.textGrey
-                            : AppColors.primary,
+                            ? colors.textSecondary
+                            : colors.brand,
                       ),
                     ),
                   ],
@@ -329,8 +328,8 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               child: LinearProgressIndicator(
                 value: plan.progress,
                 minHeight: 10,
-                backgroundColor: const Color(0xFFECECEC),
-                color: AppColors.primary,
+                backgroundColor: colors.surfaceSunken,
+                color: colors.brand,
               ),
             ),
             const SizedBox(height: 16),
@@ -361,7 +360,10 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               const SizedBox(height: 14),
               Text(
                 plan.assessment,
-                style: const TextStyle(height: 1.4, color: AppColors.textDark),
+                style: TextStyle(
+                  height: 1.4,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ],
           ],
@@ -371,27 +373,28 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   }
 
   Widget _buildPhaseCard(WorkflowPlan plan, ScheduledPhase item) {
+    final colors = AppColors.of(context);
     final phase = item.phase;
     final Widget scheduleChip;
     if (phase.done) {
       scheduleChip = _chip(
-        icon: Icons.check_circle,
+        icon: Icons.check_circle_rounded,
         label: 'Done ${_dateFmt.format(item.end)}',
-        color: Colors.green.shade700,
+        color: colors.success,
       );
     } else if (item.isOverdue) {
       scheduleChip = _chip(
         icon: Icons.event_busy,
         label:
             '${_dateFmt.format(item.start)} - ${_dateFmt.format(item.end)} - past deadline',
-        color: AppColors.primary,
+        color: colors.brand,
       );
     } else {
       scheduleChip = _chip(
-        icon: Icons.event,
+        icon: Icons.event_rounded,
         label:
             '${_dateFmt.format(item.start)} - ${_dateFmt.format(item.end)} - ${item.days} day(s)',
-        color: AppColors.grey,
+        color: colors.textSecondary,
       );
     }
 
@@ -399,10 +402,12 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       fontWeight: FontWeight.bold,
       fontSize: 15,
       decoration: phase.done ? TextDecoration.lineThrough : null,
-      color: phase.done ? AppColors.textGrey : AppColors.textDark,
+      color: phase.done
+          ? colors.textSecondary
+          : Theme.of(context).colorScheme.onSurface,
     );
     final checkbox = Checkbox(
-      activeColor: AppColors.primary,
+      activeColor: colors.brand,
       value: phase.done,
       onChanged: (value) => _togglePhase(plan, phase, value ?? false),
     );
@@ -415,7 +420,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
           const SizedBox(height: 4),
           Text(
             phase.note,
-            style: const TextStyle(color: AppColors.textGrey),
+            style: TextStyle(color: colors.textSecondary),
           ),
         ],
         const SizedBox(height: 10),
@@ -427,8 +432,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       // Tips arrive with the plan, so tapping a phase reveals them inline and
       // instantly - the same expandable-card pattern as the Paper Checker's
       // rubric sections, so the two paper tools feel like one app. A plan made
@@ -462,20 +466,21 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   // Mirrors the Paper Checker's expanded rubric cards - a small labelled
   // header, then the detail text - so the two paper tools read as one design.
   Widget _buildPhaseTips(String tips) {
+    final colors = AppColors.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.lightbulb_outline, size: 18, color: AppColors.gold),
+              Icon(Icons.lightbulb_outline, size: 18, color: colors.premium),
               SizedBox(width: 6),
               Text(
                 'Tips for this phase',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.gold,
+                  color: colors.premium,
                 ),
               ),
             ],
@@ -522,15 +527,16 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   }
 
   Widget _buildErrorCard(String message) {
+    final colors = AppColors.of(context);
     return Card(
-      color: const Color(0xFFFDECEC),
+      color: colors.dangerTint,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, color: AppColors.primary),
+            Icon(Icons.error_outline, color: colors.brand),
             const SizedBox(width: 12),
             Expanded(child: Text(message)),
           ],
@@ -660,6 +666,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
   }
 
   Future<void> _confirmStartOver() async {
+    final colors = AppColors.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -674,7 +681,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            style: FilledButton.styleFrom(backgroundColor: colors.brand),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Start over'),
           ),

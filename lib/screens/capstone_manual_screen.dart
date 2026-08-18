@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../services/paper_checker_service.dart'
     show manuscriptRubric, rubricMaxScore;
 
@@ -30,15 +31,14 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final query = _query.trim();
     final results = query.isEmpty ? null : _search(query);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Capstone Manual'),
+            appBar: AppBar(
+                title: const Text('Capstone Manual'),
+        actions: const <Widget>[ThemeToggleButton()],
       ),
       body: StudentListBody(
         child: Column(
@@ -49,18 +49,18 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
               onChanged: (value) => setState(() => _query = value),
               decoration: InputDecoration(
                 hintText: 'Search the manual... e.g. "grading", "format"',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear_rounded),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _query = '');
                         },
                       ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: colors.surface,
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -108,14 +108,14 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
   }
 
   Widget _buildNoResults(String query) {
+    final colors = AppColors.of(context);
     return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            const Icon(Icons.search_off, color: AppColors.textGrey, size: 40),
+            Icon(Icons.search_off_rounded, color: colors.textSecondary, size: 40),
             const SizedBox(height: 12),
             Text(
               'No results for "$query"',
@@ -123,10 +123,10 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Try a different word, like "grading", "format", or "roles".',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textGrey),
+              style: TextStyle(color: colors.textSecondary),
             ),
           ],
         ),
@@ -587,11 +587,8 @@ class ManualTopicListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: Text(section.title),
+            appBar: AppBar(
+                title: Text(section.title),
       ),
       body: StudentListBody(
         child: Column(
@@ -626,20 +623,17 @@ class ManualDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: Text(topic.title),
+            appBar: AppBar(
+                title: Text(topic.title),
       ),
       body: StudentListBody(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Card(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
+                            shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Padding(
@@ -657,7 +651,7 @@ class ManualDetailScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       topic.subtitle,
-                      style: const TextStyle(color: AppColors.textGrey),
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                     if (topic.content.isNotEmpty) ...[
                       const Divider(height: 28),
@@ -671,8 +665,7 @@ class ManualDetailScreen extends StatelessWidget {
               const SizedBox(height: 12),
               for (final item in topic.items)
                 Card(
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(
+                                    shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: ListTile(title: Text(item)),
@@ -716,10 +709,11 @@ class SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Text(
       text,
-      style: const TextStyle(
-        color: AppColors.textGrey,
+      style: TextStyle(
+        color: colors.textSecondary,
         fontWeight: FontWeight.bold,
         letterSpacing: 1,
       ),
@@ -744,17 +738,17 @@ class ManualCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
         leading: Container(
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: AppColors.primary,
+            color: colors.brand,
             borderRadius: BorderRadius.circular(14),
           ),
           alignment: Alignment.center,
@@ -772,9 +766,9 @@ class ManualCard extends StatelessWidget {
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(color: AppColors.textGrey),
+          style: TextStyle(color: colors.textSecondary),
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: const Icon(Icons.chevron_right_rounded),
         onTap: onTap,
       ),
     );

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 import '../services/admin_repository.dart';
 
 // Owner-only page showing a newest-first history of admin actions (who did
@@ -20,6 +20,7 @@ class AuditLogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return StreamBuilder<List<AuditLogEntry>>(
       stream: repo.auditLogStream(),
       builder: (context, snapshot) {
@@ -47,12 +48,12 @@ class AuditLogPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'A record of admin actions - group and student changes, '
                       'password resets, and admin access changes - with who '
                       'made each change and when. Newest actions appear first. '
                       'Entries cannot be edited or removed.',
-                      style: TextStyle(color: AppColors.textGrey),
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                   ],
                 ),
@@ -67,15 +68,15 @@ class AuditLogPage extends StatelessWidget {
                 ),
               )
             else
-              for (final entry in entries) _buildEntryCard(entry),
+              for (final entry in entries) _buildEntryCard(colors, entry),
           ],
         );
       },
     );
   }
 
-  Widget _buildEntryCard(AuditLogEntry entry) {
-    final (icon, color) = _visualsFor(entry.category);
+  Widget _buildEntryCard(AppColors colors, AuditLogEntry entry) {
+    final (icon, color) = _visualsFor(colors, entry.category);
     final when = entry.createdAt == null
         ? 'Just now'
         : _dateFormat.format(entry.createdAt!.toLocal());
@@ -110,8 +111,8 @@ class AuditLogPage extends StatelessWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _meta(Icons.person_outline, entry.actorEmail),
-                      _meta(Icons.schedule, when),
+                      _meta(colors, Icons.person_outline, entry.actorEmail),
+                      _meta(colors, Icons.schedule_rounded, when),
                     ],
                   ),
                 ],
@@ -123,15 +124,15 @@ class AuditLogPage extends StatelessWidget {
     );
   }
 
-  Widget _meta(IconData icon, String text) {
+  Widget _meta(AppColors colors, IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: AppColors.textGrey),
+        Icon(icon, size: 14, color: colors.textSecondary),
         const SizedBox(width: 4),
         Text(
           text,
-          style: const TextStyle(color: AppColors.textGrey, fontSize: 13),
+          style: TextStyle(color: colors.textSecondary, fontSize: 13),
         ),
       ],
     );
@@ -139,16 +140,16 @@ class AuditLogPage extends StatelessWidget {
 
   // Maps an action category to a row icon + colour so scanning the log by
   // kind of change is easy. Unknown categories fall back to a neutral icon.
-  (IconData, Color) _visualsFor(String category) {
+  (IconData, Color) _visualsFor(AppColors colors, String category) {
     switch (category) {
       case 'group':
-        return (Icons.groups, AppColors.primary);
+        return (Icons.groups_rounded, colors.brand);
       case 'student':
-        return (Icons.person, AppColors.gold);
+        return (Icons.person_rounded, colors.premium);
       case 'admin':
-        return (Icons.admin_panel_settings, AppColors.primaryDark);
+        return (Icons.admin_panel_settings_rounded, colors.brandStrong);
       default:
-        return (Icons.history, AppColors.grey);
+        return (Icons.history_rounded, colors.textSecondary);
     }
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 import '../services/admin_repository.dart';
 
 // Lets the admin choose exactly which students to print credentials for:
@@ -160,7 +160,7 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
         FilledButton.icon(
           onPressed:
               _selectedCount == 0 ? null : () => Navigator.pop(context, _result()),
-          icon: const Icon(Icons.print),
+          icon: const Icon(Icons.print_rounded),
           label: Text('Print ($_selectedCount)'),
         ),
       ],
@@ -168,6 +168,7 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
   }
 
   Widget _groupTile(CapstoneGroup g) {
+    final colors = AppColors.of(context);
     final visible = _visibleStudents(g);
     final selectedInGroup =
         visible.where((s) => _selected.contains(_key(s))).length;
@@ -189,7 +190,7 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
       ),
       subtitle: Text(
         '$selectedInGroup of ${visible.length} selected',
-        style: const TextStyle(color: AppColors.textGrey, fontSize: 12),
+        style: TextStyle(color: colors.textSecondary, fontSize: 12),
       ),
       children: [
         for (final s in visible)

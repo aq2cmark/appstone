@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../services/defense_context_service.dart';
 
 // "Add More Context" from the Defense Practice menu.
@@ -83,6 +84,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
   }
 
   Future<void> _clear() async {
+    final colors = AppColors.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -97,7 +99,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Clear'),
           ),
@@ -120,9 +122,9 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
+            appBar: AppBar(
         title: const Text('Project Context'),
         actions: [
           if (!_loading && _current.isNotEmpty)
@@ -131,6 +133,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
               onPressed: _saving ? null : _clear,
               icon: const Icon(Icons.delete_outline),
             ),
+          const ThemeToggleButton(),
         ],
       ),
       body: _loading
@@ -150,7 +153,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                           controller: _titleController,
                           label: 'Project title',
                           hint: 'e.g. Appstone: A Capstone Companion App',
-                          icon: Icons.title,
+                          icon: Icons.title_rounded,
                           maxLength: 150,
                         ),
                         _buildField(
@@ -210,16 +213,16 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.check),
+                              : const Icon(Icons.check_rounded),
                           label: const Text('Save Context'),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           'Saved on this device only. You can edit or clear it '
                           'any time before a practice session.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: AppColors.textGrey,
+                            color: colors.textSecondary,
                             fontSize: 12,
                           ),
                         ),
@@ -233,16 +236,17 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
   }
 
   Widget _buildExplainer() {
+    final colors = AppColors.of(context);
     return Card(
-      color: const Color(0xFFFFF8E7),
+      color: colors.warningTint,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              children: const [
-                Icon(Icons.auto_awesome, color: AppColors.gold),
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: colors.premium),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -260,10 +264,10 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
               style: TextStyle(height: 1.4),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Every field is optional. Leave it blank and practice works the '
               'same as before.',
-              style: TextStyle(color: AppColors.textGrey, fontSize: 12.5),
+              style: TextStyle(color: colors.textSecondary, fontSize: 12.5),
             ),
           ],
         ),
@@ -279,6 +283,8 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
     required int maxLength,
     int maxLines = 1,
   }) {
+    final colors = AppColors.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
@@ -291,8 +297,8 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
           labelText: label,
           hintText: hint,
           alignLabelWithHint: maxLines > 1,
-          prefixIcon: Icon(icon, color: AppColors.primary),
-          fillColor: Colors.white,
+          prefixIcon: Icon(icon, color: colors.brand),
+          fillColor: colors.surface,
           // Counters on five stacked fields are noise; the cap is a safety net,
           // not something the student should be watching.
           counterText: '',
