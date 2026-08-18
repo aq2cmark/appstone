@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/defense_ai_service.dart';
-import '../services/report_printer.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
@@ -10,7 +9,6 @@ import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/charts/metric_radar.dart';
 import '../widgets/charts/score_dial.dart';
-import '../widgets/states/app_states.dart';
 import 'title_defense_screen.dart';
 
 /// Shown after a defense practice session ends.
@@ -46,8 +44,6 @@ class DefenseResultsScreen extends StatefulWidget {
 }
 
 class _DefenseResultsScreenState extends State<DefenseResultsScreen> {
-  bool _printing = false;
-
   /// A plain-language band for the overall score.
   ///
   /// Derived from the score the AI already returns - no new data is stored, and
@@ -102,19 +98,6 @@ class _DefenseResultsScreenState extends State<DefenseResultsScreen> {
       subtitle: widget.title,
       accent: colors.moduleDefense,
       maxContentWidth: AppContentWidth.wide,
-      actions: <Widget>[
-        IconButton(
-          tooltip: 'Export as PDF',
-          onPressed: _printing ? null : _exportPdf,
-          icon: _printing
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.picture_as_pdf_outlined),
-        ),
-      ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -211,12 +194,6 @@ class _DefenseResultsScreenState extends State<DefenseResultsScreen> {
                   onPressed: _practiceAgain,
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Practice again'),
-                ),
-                AppSpacing.vMd,
-                OutlinedButton.icon(
-                  onPressed: _printing ? null : _exportPdf,
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Export as PDF'),
                 ),
                 AppSpacing.vMd,
                 TextButton(
@@ -414,21 +391,6 @@ class _DefenseResultsScreenState extends State<DefenseResultsScreen> {
     );
   }
 
-  Future<void> _exportPdf() async {
-    setState(() => _printing = true);
-    try {
-      await ReportPrinter.printDefenseResult(
-        mode: widget.title,
-        score: widget.score,
-        questionsAnswered: widget.questionsAnswered,
-        rank: _rank.label,
-      );
-    } catch (error) {
-      if (mounted) showErrorSnack(context, error);
-    } finally {
-      if (mounted) setState(() => _printing = false);
-    }
-  }
 }
 
 /// The rank pill above the headline.

@@ -544,7 +544,11 @@ class _BrandPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    // This panel is a fixed brand surface, so it uses the LIGHT palette's
+    // maroons in both themes. Following the theme would make the gradient run
+    // to a pale salmon in dark mode, where neither white nor dark ink reaches
+    // AA across the whole sweep.
+    const colors = AppColors.light;
 
     return DecoratedBox(
       decoration: BoxDecoration(

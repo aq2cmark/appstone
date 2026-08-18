@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/defense_context_service.dart';
 
@@ -127,6 +128,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
     return Scaffold(
             appBar: AppBar(
         title: const Text('Project Context'),
+        bottom: appBarAccent(colors.moduleDefense),
         actions: [
           if (!_loading && _current.isNotEmpty)
             IconButton(

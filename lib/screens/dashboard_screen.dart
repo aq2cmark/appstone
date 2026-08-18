@@ -187,7 +187,7 @@ class _HomeViewState extends State<HomeView> {
               alignment: Alignment.center,
               child: Text(
                 'A',
-                style: AppTypography.titleSmall.copyWith(color: colors.onBrand),
+                style: AppTypography.titleSmall.copyWith(color: colors.onBrandStrong),
               ),
             ),
             AppSpacing.hSm,

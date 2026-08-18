@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/title_generator_service.dart';
 import '../theme/app_typography.dart';
@@ -280,6 +281,7 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
             appBar: AppBar(
                 title: const Text('Title Generator'),
         actions: const <Widget>[ThemeToggleButton()],
+        bottom: appBarAccent(colors.moduleTitleGen),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

@@ -127,10 +127,7 @@ class AppScaffold extends StatelessWidget {
           if (showThemeToggle) const ThemeToggleButton(),
           SizedBox(width: context.pagePadding - AppSpacing.sm),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(3),
-          child: Container(height: 3, color: tone.withValues(alpha: 0.85)),
-        ),
+        bottom: appBarAccent(tone),
       ),
       body: SafeArea(top: false, child: content),
       bottomNavigationBar: bottomBar,
@@ -240,4 +237,17 @@ class AppTwoColumn extends StatelessWidget {
       },
     );
   }
+}
+
+/// The module accent hair line drawn under an app bar.
+///
+/// [AppScaffold] applies this automatically. Screens that still build their own
+/// [AppBar] pass it to `AppBar.bottom` so the line is present on every screen -
+/// otherwise it appears and disappears as you move between tabs, which reads as
+/// a rendering bug rather than a design.
+PreferredSizeWidget appBarAccent(Color color) {
+  return PreferredSize(
+    preferredSize: const Size.fromHeight(3),
+    child: Container(height: 3, color: color.withValues(alpha: 0.85)),
+  );
 }

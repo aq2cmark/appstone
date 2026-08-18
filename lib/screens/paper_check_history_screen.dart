@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_check_history_service.dart';
 import 'auth_gate.dart';
@@ -100,9 +101,12 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
             appBar: AppBar(
                 title: const Text('Check History'),
+        bottom: appBarAccent(colors.modulePaper),
         actions: [
           IconButton(
             tooltip: 'Refresh',

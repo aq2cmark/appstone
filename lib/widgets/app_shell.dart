@@ -344,7 +344,7 @@ class _RailBrand extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         'A',
-        style: AppTypography.titleLarge.copyWith(color: colors.onBrand),
+        style: AppTypography.titleLarge.copyWith(color: colors.onBrandStrong),
       ),
     );
 

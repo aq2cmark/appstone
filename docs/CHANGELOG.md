@@ -58,12 +58,51 @@ Quick-scan list of what changed and why, in the order it happened. For full deta
 - `ProgressRing`, `MetricBar` — already tween to value
 - `NavigationBar` indicator — Material 3 animates the pill natively
 
+## Defects found and fixed during self-audit
+- ✅ **Shell pre-built all premium upsells at launch** for free users — 3 extra widget trees built before they were ever opened, and their entrance animations played invisibly, so the animation was already over by the time the tab was tapped
+- ✅ **Animations ran in background tabs** — `IndexedStack` keeps every visited destination alive and does *not* pause tickers. A shimmering skeleton or breathing empty state in a background tab animated forever. Wrapped destinations in `TickerMode(enabled: i == _index)`
+- ✅ **Theme crossfade was half-broken** (my own earlier bug) — `AnimatedTheme` lerped Material's colours, but `AppColors` read theme *brightness*, which flips at t=0.5. Backgrounds faded while text/accents snapped mid-fade. Fixed properly: `AppColors` is now a `ThemeExtension`, which `ThemeData.lerp` interpolates automatically, so every token fades together. `of()` keeps a brightness fallback so the bare-`MaterialApp` widget tests still pass
+- ✅ **Accent line was on only 4 of 12 screens** — it appeared and disappeared while tab-switching. Extracted `appBarAccent()` and applied it everywhere
+
+## Capstone Manual — reading treatment
+- ✅ Body 17px / line-height 1.7, measure narrowed 760 → **660px** (~68 chars)
+- ✅ Lead paragraph renders larger to give the eye an entry point
+- ✅ Bullets: one card with accent markers, replacing one-`Card`-per-item (an 8-point list was 8 stacked boxes)
+- ✅ **A- / A+ text size control**, 4 steps, persisted (`manual_text_scale_v1`). Scoped to the manual only — raising it does not stretch the nav bar or admin tables
+- ✅ **Reading progress bar** doubling as the module accent line
+- ✅ **Requirement callouts** — items stating an obligation get a tinted block. Matched on wording the manual already uses (`must`, `required`, `shall`, `not allowed`, `mandatory`); anything unmatched renders as a normal bullet, so emphasis changes but never meaning
+
+## Contrast / WCAG AA audit
+Measured with a real contrast script (kept at `tool/contrast_audit.dart` — re-run it after any palette change):
+
+```bash
+dart tool/contrast_audit.dart
+```
+
+**Result: both themes now pass AA (4.5:1) on every text/surface pair.** Failures found and fixed:
+
+| Pair | Was | Now |
+|---|---|---|
+| `textTertiary` on background (light) | **2.83** ✗ | 4.65 |
+| `textTertiary` on surface (dark) | 3.82 ✗ | 5.09 |
+| white on `brand` fill (dark) — *every primary button label* | 3.55 ✗ | 5.07 |
+| white on `premium` fill (dark) | **1.91** ✗ | 6.4+ |
+| white on `success` / `warning` / `info` fill (dark) | 1.74 – 2.32 ✗ | all pass |
+| `warning`, `premium`, `moduleTitleGen` on surface (light) | 4.06 – 4.34 ✗ | 4.9 – 5.4 |
+| `success` / `premium` on their tints (light) | 4.43 ✗ | 4.52 / 4.55 |
+
+**Root cause of the worst ones:** `onColor` and `onBrand` were white in *both* themes, but dark-theme accents are deliberately light colours — so white-on-accent was unreadable. Dark theme now uses dark ink on filled accents, which is also what Material 3 prescribes.
+
+**New token: `onBrandStrong`** (white in both themes). Needed because `brandStrong` is a deep maroon in both themes, so the app-bar brand marks and rail logo still need white — flipping `onBrand` to dark ink alone would have broken them.
+
+**Login brand panel** now pins to the light palette's maroons in both themes. Following the theme made its gradient run to a pale salmon in dark mode, where neither white nor dark ink cleared AA across the whole sweep.
+
 ## Still queued
+- ⬜ Hero transition from Home cards *(you picked this — highest risk, doing it alone and last)*
+- ⬜ Icon rule formalised: rounded = active/primary, outlined = idle/secondary *(decided; mostly matches current code, needs a documentation pass + spot fixes)*
 - ⬜ Scroll-linked app bar elevation
-- ⬜ Hero transition from Home cards into module headers — *highest risk item; a tag mismatch throws at runtime rather than degrading quietly, so worth doing alone*
 - ⬜ Skeleton → content crossfade
 - ⬜ Full custom pull-to-refresh drawing the Appstone mark
-- ⬜ Contrast/AA audit
 - ⬜ Desktop density pass
 
 ### Scope notes / judgement calls

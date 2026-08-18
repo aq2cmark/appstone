@@ -59,6 +59,12 @@ abstract final class AppTheme {
       useMaterial3: true,
       brightness: c.brightness,
       colorScheme: colorScheme,
+
+      // The palette travels with the theme so `AppColors.of(context)` gets the
+      // interpolated value during a light/dark crossfade rather than snapping
+      // when brightness flips.
+      extensions: <ThemeExtension<dynamic>>[c],
+
       scaffoldBackgroundColor: c.background,
       canvasColor: c.background,
       textTheme: textTheme,

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
 import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/practice_history_service.dart';
 import 'auth_gate.dart';
@@ -90,9 +91,12 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
             appBar: AppBar(
                 title: const Text('Session History'),
+        bottom: appBarAccent(colors.moduleDefense),
         actions: [
           IconButton(
             tooltip: 'Refresh',
