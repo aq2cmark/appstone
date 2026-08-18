@@ -134,15 +134,15 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               ),
             ),
             const Divider(color: Colors.white24),
-            navButton(0, Icons.dashboard, 'Dashboard'),
-            navButton(1, Icons.person_add, 'Register Student'),
-            navButton(2, Icons.upload_file, 'Import Students'),
+            navButton(0, Icons.dashboard_rounded, 'Dashboard'),
+            navButton(1, Icons.person_add_rounded, 'Register Student'),
+            navButton(2, Icons.upload_file_rounded, 'Import Students'),
             if (widget.role == AdminRole.owner)
-              navButton(3, Icons.admin_panel_settings, 'Admins'),
+              navButton(3, Icons.admin_panel_settings_rounded, 'Admins'),
             if (widget.role == AdminRole.owner)
-              navButton(4, Icons.history, 'Audit Log'),
+              navButton(4, Icons.history_rounded, 'Audit Log'),
             const Spacer(),
-            navButton(-1, Icons.logout, 'Logout'),
+            navButton(-1, Icons.logout_rounded, 'Logout'),
             const SizedBox(height: 16),
           ],
         ),
@@ -208,7 +208,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           ? Builder(
               builder: (context) => IconButton(
                 onPressed: () => Scaffold.of(context).openDrawer(),
-                icon: const Icon(Icons.menu, color: Colors.white),
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
               ),
             )
           : null,
@@ -243,12 +243,12 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                     backgroundColor: colors.brand,
                   ),
                   onPressed: createGroup,
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_rounded),
                   label: const Text('Create New Group'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _printCredentials(groups),
-                  icon: const Icon(Icons.print),
+                  icon: const Icon(Icons.print_rounded),
                   label: const Text('Print Credentials'),
                 ),
               ],
@@ -261,21 +261,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 statCard(
                   'Total Groups',
                   groups.length.toString(),
-                  Icons.groups,
+                  Icons.groups_rounded,
                   colors.brand,
                   statWidth,
                 ),
                 statCard(
                   'Total Students',
                   totalStudents.toString(),
-                  Icons.person_add,
+                  Icons.person_add_rounded,
                   colors.premium,
                   statWidth,
                 ),
                 statCard(
                   'Premium Groups',
                   premiumGroups.toString(),
-                  Icons.workspace_premium,
+                  Icons.workspace_premium_rounded,
                   colors.brandStrong,
                   statWidth,
                 ),
@@ -391,7 +391,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                       IconButton(
                         tooltip: 'Rename group',
                         onPressed: () => renameGroup(group),
-                        icon: const Icon(Icons.edit, color: Colors.white, size: 18),
+                        icon: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -430,7 +430,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   IconButton(
                     tooltip: 'Delete group',
                     onPressed: () => deleteGroup(group),
-                    icon: const Icon(Icons.delete, color: Colors.white),
+                    icon: const Icon(Icons.delete_rounded, color: Colors.white),
                   ),
                 ],
               );
@@ -521,7 +521,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                       onPressed: () =>
                                           editStudent(group, student, groups),
                                       icon: Icon(
-                                        Icons.edit,
+                                        Icons.edit_rounded,
                                         color: colors.brand,
                                       ),
                                     ),
@@ -530,7 +530,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                       onPressed: () =>
                                           resetStudentPassword(group, student),
                                       icon: Icon(
-                                        Icons.lock_reset,
+                                        Icons.lock_reset_rounded,
                                         color: colors.brand,
                                       ),
                                     ),
@@ -539,7 +539,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                                       onPressed: () =>
                                           deleteStudent(group, student),
                                       icon: Icon(
-                                        Icons.delete,
+                                        Icons.delete_rounded,
                                         color: colors.danger,
                                       ),
                                     ),
@@ -1052,7 +1052,7 @@ class _RegisterStudentFormState extends State<RegisterStudentForm> {
         FilledButton.icon(
           style: FilledButton.styleFrom(backgroundColor: colors.brand),
           onPressed: submit,
-          icon: const Icon(Icons.person_add),
+          icon: const Icon(Icons.person_add_rounded),
           label: const Text('Register Student'),
         ),
       ],

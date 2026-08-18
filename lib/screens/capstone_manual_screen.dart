@@ -49,11 +49,11 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
               onChanged: (value) => setState(() => _query = value),
               decoration: InputDecoration(
                 hintText: 'Search the manual... e.g. "grading", "format"',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear_rounded),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _query = '');
@@ -115,7 +115,7 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Icon(Icons.search_off, color: colors.textSecondary, size: 40),
+            Icon(Icons.search_off_rounded, color: colors.textSecondary, size: 40),
             const SizedBox(height: 12),
             Text(
               'No results for "$query"',
@@ -768,7 +768,7 @@ class ManualCard extends StatelessWidget {
           subtitle,
           style: TextStyle(color: colors.textSecondary),
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: const Icon(Icons.chevron_right_rounded),
         onTap: onTap,
       ),
     );

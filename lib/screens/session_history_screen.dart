@@ -96,7 +96,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
           const ThemeToggleButton(),
         ],
@@ -136,7 +136,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, color: colors.textSecondary, size: 48),
+            Icon(Icons.history_rounded, color: colors.textSecondary, size: 48),
             SizedBox(height: 12),
             Text(
               'No practice sessions yet.\nFinish a defense practice and it '
@@ -284,7 +284,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                         '${record.questionsAnswered} '
                         'question${record.questionsAnswered == 1 ? '' : 's'}',
                       ),
-                      _detail(Icons.schedule, record.durationLabel),
+                      _detail(Icons.schedule_rounded, record.durationLabel),
                     ],
                   ),
                 ],

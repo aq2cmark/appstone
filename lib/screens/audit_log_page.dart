@@ -112,7 +112,7 @@ class AuditLogPage extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       _meta(colors, Icons.person_outline, entry.actorEmail),
-                      _meta(colors, Icons.schedule, when),
+                      _meta(colors, Icons.schedule_rounded, when),
                     ],
                   ),
                 ],
@@ -143,13 +143,13 @@ class AuditLogPage extends StatelessWidget {
   (IconData, Color) _visualsFor(AppColors colors, String category) {
     switch (category) {
       case 'group':
-        return (Icons.groups, colors.brand);
+        return (Icons.groups_rounded, colors.brand);
       case 'student':
-        return (Icons.person, colors.premium);
+        return (Icons.person_rounded, colors.premium);
       case 'admin':
-        return (Icons.admin_panel_settings, colors.brandStrong);
+        return (Icons.admin_panel_settings_rounded, colors.brandStrong);
       default:
-        return (Icons.history, colors.textSecondary);
+        return (Icons.history_rounded, colors.textSecondary);
     }
   }
 }

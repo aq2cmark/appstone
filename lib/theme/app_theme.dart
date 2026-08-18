@@ -90,6 +90,10 @@ abstract final class AppTheme {
         foregroundColor: c.textPrimary,
         elevation: AppElevation.flat,
         scrolledUnderElevation: AppElevation.flat,
+        // Scrolled-under tint: the neutral bar gains a hairline of separation
+        // once content passes beneath it, so it reads as a layer rather than
+        // floating text. Colour, not elevation - shadows are invisible on dark.
+        shadowColor: Colors.transparent,
         centerTitle: false,
         titleTextStyle: AppTypography.headlineSmall.copyWith(
           color: c.textPrimary,
@@ -103,7 +107,7 @@ abstract final class AppTheme {
         color: c.surface,
         surfaceTintColor: Colors.transparent,
         shadowColor: c.shadow,
-        elevation: AppElevation.raised,
+        elevation: AppElevation.flat,
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(

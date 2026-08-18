@@ -9,6 +9,7 @@ import 'package:appstone/screens/title_generator_screen.dart';
 import 'package:appstone/screens/ai_workflow_screen.dart';
 import 'package:appstone/screens/paper_checker_screen.dart';
 import 'package:appstone/screens/paper_check_history_screen.dart';
+import 'package:appstone/theme/app_motion.dart';
 import 'package:appstone/theme/app_theme.dart';
 import 'package:appstone/theme/theme_controller.dart';
 import 'package:appstone/widgets/auth_guard.dart';
@@ -63,7 +64,16 @@ class MainApp extends StatelessWidget {
               maxScaleFactor: 1.6,
             ),
           ),
-          child: child ?? const SizedBox.shrink(),
+          // Toggling light/dark swaps every colour in the app at once. Without
+          // this the switch lands as a hard flash, which is unpleasant at
+          // night - and the toggle now sits in every app bar, so it is the
+          // control people trigger most.
+          child: AnimatedTheme(
+            data: Theme.of(context),
+            duration: AppMotion.respect(context, AppMotion.slow),
+            curve: AppMotion.standardCurve,
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
       home: const AuthGate(),

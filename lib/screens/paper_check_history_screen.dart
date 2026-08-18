@@ -106,7 +106,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
           IconButton(
             tooltip: 'Refresh',
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
           const ThemeToggleButton(),
         ],
@@ -146,7 +146,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, color: colors.textSecondary, size: 48),
+            Icon(Icons.history_rounded, color: colors.textSecondary, size: 48),
             SizedBox(height: 12),
             Text(
               'No paper checks yet.\nCheck a manuscript and it will show up '
@@ -177,7 +177,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.sort, size: 18, color: colors.textSecondary),
+            Icon(Icons.sort_rounded, size: 18, color: colors.textSecondary),
             const SizedBox(width: 8),
             DropdownButton<PaperCheckSort>(
               value: _sort,
@@ -382,15 +382,15 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
     final String text;
     if (diff > 0) {
       color = colors.success;
-      icon = Icons.arrow_upward;
+      icon = Icons.arrow_upward_rounded;
       text = '+$diff';
     } else if (diff < 0) {
       color = colors.danger;
-      icon = Icons.arrow_downward;
+      icon = Icons.arrow_downward_rounded;
       text = '$diff';
     } else {
       color = colors.textSecondary;
-      icon = Icons.remove;
+      icon = Icons.remove_rounded;
       text = 'same';
     }
     return Container(

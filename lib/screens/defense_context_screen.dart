@@ -153,7 +153,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                           controller: _titleController,
                           label: 'Project title',
                           hint: 'e.g. Appstone: A Capstone Companion App',
-                          icon: Icons.title,
+                          icon: Icons.title_rounded,
                           maxLength: 150,
                         ),
                         _buildField(
@@ -213,7 +213,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.check),
+                              : const Icon(Icons.check_rounded),
                           label: const Text('Save Context'),
                         ),
                         const SizedBox(height: 8),
@@ -246,7 +246,7 @@ class _DefenseContextScreenState extends State<DefenseContextScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.auto_awesome, color: colors.premium),
+                Icon(Icons.auto_awesome_rounded, color: colors.premium),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(

@@ -78,7 +78,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
             IconButton(
               tooltip: 'Start over',
               onPressed: _confirmStartOver,
-              icon: const Icon(Icons.restart_alt),
+              icon: const Icon(Icons.restart_alt_rounded),
             ),
           const ThemeToggleButton(),
         ],
@@ -135,7 +135,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _generating ? null : _pickPaper,
-                  icon: const Icon(Icons.upload_file),
+                  icon: const Icon(Icons.upload_file_rounded),
                   label: Text(
                     _selectedPaper == null ? 'Select Paper' : 'Change Paper',
                   ),
@@ -161,7 +161,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
                   onPressed: _generating ? null : _pickDeadline,
-                  icon: const Icon(Icons.event),
+                  icon: const Icon(Icons.event_rounded),
                   label: Text(
                     _deadline == null
                         ? 'Pick your deadline'
@@ -201,7 +201,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
                     color: Colors.white,
                   ),
                 )
-              : const Icon(Icons.auto_awesome),
+              : const Icon(Icons.auto_awesome_rounded),
           label: Text(
             _generating ? 'Building timeline...' : 'Generate Timeline',
           ),
@@ -227,7 +227,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: _confirmStartOver,
-          icon: const Icon(Icons.restart_alt, size: 18),
+          icon: const Icon(Icons.restart_alt_rounded, size: 18),
           label: const Text('Start a new plan'),
         ),
       ],
@@ -248,7 +248,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       bannerText = 'All phases complete. Great work!';
     } else if (onTrack) {
       bannerColor = colors.success;
-      bannerIcon = Icons.trending_up;
+      bannerIcon = Icons.trending_up_rounded;
       bannerText = 'On track - projected finish ${_dateFmt.format(projected)}.';
     } else {
       bannerColor = colors.brand;
@@ -378,7 +378,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
     final Widget scheduleChip;
     if (phase.done) {
       scheduleChip = _chip(
-        icon: Icons.check_circle,
+        icon: Icons.check_circle_rounded,
         label: 'Done ${_dateFmt.format(item.end)}',
         color: colors.success,
       );
@@ -391,7 +391,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       );
     } else {
       scheduleChip = _chip(
-        icon: Icons.event,
+        icon: Icons.event_rounded,
         label:
             '${_dateFmt.format(item.start)} - ${_dateFmt.format(item.end)} - ${item.days} day(s)',
         color: colors.textSecondary,

@@ -92,7 +92,7 @@ class _DefensePracticeScreenState extends State<DefensePracticeScreen> {
 
     return AppScaffold(
       title: 'Defense Practice',
-      subtitle: 'Simulated panel, timed questions',
+      subtitle: 'Practice answering, timed questions',
       accent: colors.moduleDefense,
       automaticallyImplyLeading: false,
       actions: <Widget>[
@@ -117,8 +117,8 @@ class _DefensePracticeScreenState extends State<DefensePracticeScreen> {
                   PracticeModeCard(
                     title: 'Title Defense',
                     subtitle:
-                        'Defend your proposal, problem statement and research '
-                        'plan.',
+                        'Propose your title, problem statement and defend it'
+                        ' to the panel.',
                     duration: '15-20 min',
                     questions: '5-8 questions',
                     perQuestion: '3 min each',

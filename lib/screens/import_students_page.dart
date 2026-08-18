@@ -70,7 +70,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                         backgroundColor: colors.brand,
                       ),
                       onPressed: _busy ? null : _pickAndParse,
-                      icon: const Icon(Icons.upload_file),
+                      icon: const Icon(Icons.upload_file_rounded),
                       label: Text(_fileName == null ? 'Select File' : 'Change File'),
                     ),
                     OutlinedButton.icon(
@@ -205,7 +205,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.check_circle, color: colors.success),
+                Icon(Icons.check_circle_rounded, color: colors.success),
                 const SizedBox(width: 8),
                 Text(
                   'Imported ${result.created.length} student(s)',
@@ -229,7 +229,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
                   onPressed: () => _copyCredentials(result),
-                  icon: const Icon(Icons.copy_all),
+                  icon: const Icon(Icons.copy_all_rounded),
                   label: const Text('Copy all as CSV'),
                 ),
               ),
@@ -270,7 +270,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: colors.brand),
               onPressed: _reset,
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_rounded),
               label: const Text('Import another file'),
             ),
           ],

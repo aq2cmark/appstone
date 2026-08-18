@@ -160,7 +160,7 @@ class _PrintOptionsDialogState extends State<PrintOptionsDialog> {
         FilledButton.icon(
           onPressed:
               _selectedCount == 0 ? null : () => Navigator.pop(context, _result()),
-          icon: const Icon(Icons.print),
+          icon: const Icon(Icons.print_rounded),
           label: Text('Print ($_selectedCount)'),
         ),
       ],
