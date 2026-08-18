@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 
 // The Appstone brand mark: a rounded-square tile carrying a capstone "A" - a
 // flat-topped apex so the letter also reads as the top stone of a structure.
@@ -14,29 +14,32 @@ class AppstoneLogo extends StatelessWidget {
   const AppstoneLogo({
     super.key,
     this.size = 80,
-    this.tileColor = AppColors.primary,
-    this.markColor = Colors.white,
+    this.tileColor,
+    this.markColor,
     this.showTile = true,
   });
 
   final double size;
   // The rounded tile behind the mark. Ignored when [showTile] is false.
-  final Color tileColor;
-  // Colour of the "A" strokes.
-  final Color markColor;
+  // Null resolves to the brand colour for the active theme.
+  final Color? tileColor;
+  // Colour of the "A" strokes. Null resolves to the on-brand colour.
+  final Color? markColor;
   // When false only the glyph is painted on a transparent background, for
   // placing the mark on an already-coloured surface.
   final bool showTile;
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return SizedBox(
       width: size,
       height: size,
       child: CustomPaint(
         painter: _AppstoneMarkPainter(
-          tileColor: showTile ? tileColor : null,
-          markColor: markColor,
+          tileColor: showTile ? (tileColor ?? colors.brand) : null,
+          markColor: markColor ?? colors.onBrand,
         ),
       ),
     );
@@ -108,15 +111,17 @@ class _AppstoneWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: crossAxis,
       children: [
         Text.rich(
           TextSpan(
-            children: const [
-              TextSpan(text: 'A', style: TextStyle(color: AppColors.primary)),
-              TextSpan(text: 'ppstone'),
+            children: [
+              TextSpan(text: 'A', style: TextStyle(color: colors.brand)),
+              const TextSpan(text: 'ppstone'),
             ],
           ),
           textAlign: align,
@@ -124,7 +129,7 @@ class _AppstoneWordmark extends StatelessWidget {
             fontSize: size,
             fontWeight: FontWeight.w800,
             letterSpacing: -size * 0.02,
-            color: AppColors.textDark,
+            color: colors.textPrimary,
             height: 1.0,
           ),
         ),
@@ -137,7 +142,7 @@ class _AppstoneWordmark extends StatelessWidget {
               fontSize: size * 0.30,
               fontWeight: FontWeight.w700,
               letterSpacing: size * 0.09,
-              color: AppColors.textGrey,
+              color: colors.textSecondary,
             ),
           ),
         ],

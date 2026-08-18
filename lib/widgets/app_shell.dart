@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../screens/capstone_manual_screen.dart';
+import '../screens/paper_checker_screen.dart';
+import '../screens/ai_workflow_screen.dart';
 import '../screens/defense_practice_screen.dart';
-import '../screens/session_history_screen.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
-import '../theme/theme_controller.dart';
 import 'premium_upsell.dart';
+import 'theme_toggle_button.dart';
 
 /// The student's persistent navigation.
 ///
@@ -30,11 +30,22 @@ import 'premium_upsell.dart';
 /// bottom bar, the inner one contributes the app bar and body. Nesting is safe
 /// here because `ScaffoldMessenger` lives above both, so snack bars raised by
 /// an inner screen still display correctly.
+/// The five modules, in the order a student meets them: read the rules, get a
+/// title, rehearse the defense, plan the work, check the manuscript.
+///
+/// Session and check history are reached from the history button in the
+/// Practice and Checker app bars, which is where a student is already standing
+/// when they want to look back at a previous attempt.
 enum AppDestination {
   home(
     label: 'Home',
     icon: Icons.home_outlined,
     selectedIcon: Icons.home_rounded,
+  ),
+  manual(
+    label: 'Manual',
+    icon: Icons.menu_book_outlined,
+    selectedIcon: Icons.menu_book_rounded,
   ),
   practice(
     label: 'Practice',
@@ -42,16 +53,17 @@ enum AppDestination {
     selectedIcon: Icons.shield_rounded,
     requiresPremium: true,
   ),
-  progress(
-    label: 'Progress',
-    icon: Icons.insights_outlined,
-    selectedIcon: Icons.insights_rounded,
+  workflow(
+    label: 'Workflow',
+    icon: Icons.calendar_month_outlined,
+    selectedIcon: Icons.calendar_month_rounded,
     requiresPremium: true,
   ),
-  manual(
-    label: 'Manual',
-    icon: Icons.menu_book_outlined,
-    selectedIcon: Icons.menu_book_rounded,
+  checker(
+    label: 'Checker',
+    icon: Icons.fact_check_outlined,
+    selectedIcon: Icons.fact_check_rounded,
+    requiresPremium: true,
   );
 
   const AppDestination({
@@ -91,7 +103,10 @@ class _AppShellState extends State<AppShell> {
   /// Destinations are built lazily and then kept alive, so switching tabs does
   /// not re-run a screen's Firestore reads or lose its scroll position. Home is
   /// always built; the rest appear the first time they are opened.
-  late final List<Widget?> _built = <Widget?>[widget.home, null, null, null];
+  late final List<Widget?> _built = <Widget?>[
+    widget.home,
+    ...List<Widget?>.filled(AppDestination.values.length - 1, null),
+  ];
 
   Widget _destination(int index) {
     final destination = AppDestination.values[index];
@@ -103,9 +118,10 @@ class _AppShellState extends State<AppShell> {
 
     return _built[index] ??= switch (destination) {
       AppDestination.home => widget.home,
-      AppDestination.practice => const DefensePracticeScreen(),
-      AppDestination.progress => const SessionHistoryScreen(),
       AppDestination.manual => const CapstoneManualScreen(),
+      AppDestination.practice => const DefensePracticeScreen(),
+      AppDestination.workflow => const AIWorkflowScreen(),
+      AppDestination.checker => const PaperCheckerScreen(),
     };
   }
 
@@ -439,31 +455,5 @@ class AppShellActions extends StatelessWidget {
     if (parts.length == 1) return parts.first.characters.first.toUpperCase();
     return (parts.first.characters.first + parts.last.characters.first)
         .toUpperCase();
-  }
-}
-
-/// Switches between light and dark, with the icon crossfading.
-class ThemeToggleButton extends StatelessWidget {
-  const ThemeToggleButton({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return IconButton(
-      tooltip: isDark ? 'Switch to light theme' : 'Switch to dark theme',
-      onPressed: () => ThemeController.instance.toggle(context),
-      icon: AnimatedSwitcher(
-        duration: AppMotion.respect(context, AppMotion.quick),
-        transitionBuilder: (child, animation) => RotationTransition(
-          turns: Tween<double>(begin: 0.75, end: 1).animate(animation),
-          child: FadeTransition(opacity: animation, child: child),
-        ),
-        child: Icon(
-          isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-          key: ValueKey<bool>(isDark),
-        ),
-      ),
-    );
   }
 }

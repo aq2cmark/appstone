@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 import '../services/admin_repository.dart';
 import '../services/functions_service.dart';
 import 'owner_transfer_confirm_page.dart';
@@ -23,6 +23,7 @@ class AdminManagementPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return StreamBuilder<List<AdminAccount>>(
       stream: repo.adminsStream(),
       builder: (context, snapshot) {
@@ -50,20 +51,20 @@ class AdminManagementPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Invite an admin by email. They then open "Invited as an '
                       'admin? Create your account" on the login screen, verify '
                       'the email via a link we send them, and set their '
                       'password. To remove someone, deactivate them - that '
                       'cuts off access immediately without deleting anything.',
-                      style: TextStyle(color: AppColors.textGrey),
+                      style: TextStyle(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 16),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
+                          backgroundColor: colors.brand,
                         ),
                         onPressed: () => _invite(context),
                         icon: const Icon(Icons.person_add_alt_1),
@@ -83,6 +84,7 @@ class AdminManagementPage extends StatelessWidget {
   }
 
   Widget _buildAdminCard(BuildContext context, AdminAccount admin) {
+    final colors = AppColors.of(context);
     final isSelf = admin.email == currentEmail.toLowerCase();
 
     return Card(
@@ -104,23 +106,23 @@ class AdminManagementPage extends StatelessWidget {
                     fontSize: 16,
                   ),
                 ),
-                if (isSelf) _chip('You', AppColors.grey),
+                if (isSelf) _chip('You', colors.textSecondary),
                 _chip(
                   admin.isOwner ? 'Owner' : 'Admin',
-                  admin.isOwner ? AppColors.gold : AppColors.primary,
+                  admin.isOwner ? colors.premium : colors.brand,
                 ),
                 if (!admin.active)
-                  _chip('Deactivated', AppColors.danger)
+                  _chip('Deactivated', colors.danger)
                 else if (admin.isPending)
-                  _chip('Invited - not signed up', AppColors.grey)
+                  _chip('Invited - not signed up', colors.textSecondary)
                 else
-                  _chip('Active', Colors.green),
+                  _chip('Active', colors.success),
               ],
             ),
             const SizedBox(height: 4),
             Text(
               admin.email,
-              style: const TextStyle(color: AppColors.textGrey),
+              style: TextStyle(color: colors.textSecondary),
             ),
             if (!isSelf) ...[
               const SizedBox(height: 12),
@@ -140,7 +142,7 @@ class AdminManagementPage extends StatelessWidget {
                   if (admin.active)
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.danger,
+                        foregroundColor: colors.danger,
                       ),
                       onPressed: () => _setActive(context, admin, false),
                       icon: const Icon(Icons.block, size: 18),
@@ -149,7 +151,7 @@ class AdminManagementPage extends StatelessWidget {
                   else
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.green,
+                        foregroundColor: colors.success,
                       ),
                       onPressed: () => _setActive(context, admin, true),
                       icon: const Icon(Icons.check, size: 18),
@@ -158,7 +160,7 @@ class AdminManagementPage extends StatelessWidget {
                   IconButton(
                     tooltip: 'Remove record',
                     onPressed: () => _delete(context, admin),
-                    icon: const Icon(Icons.delete, color: AppColors.danger),
+                    icon: Icon(Icons.delete, color: colors.danger),
                   ),
                 ],
               ),
@@ -351,6 +353,7 @@ class AdminManagementPage extends StatelessWidget {
     required String body,
     required String action,
   }) async {
+    final colors = AppColors.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -362,7 +365,7 @@ class AdminManagementPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            style: FilledButton.styleFrom(backgroundColor: colors.danger),
             onPressed: () => Navigator.pop(context, true),
             child: Text(action),
           ),

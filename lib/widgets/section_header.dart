@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 
 // Shared page-header banner. Used by both the Admin Portal and the Student
 // Dashboard so the two main "hub" screens look like one app instead of two:
@@ -27,6 +27,7 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -63,7 +64,7 @@ class SectionHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: AppColors.primary,
+      color: colors.brand,
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
       child: SafeArea(
         bottom: false,

@@ -2,7 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../services/title_generator_service.dart';
 import '../theme/app_typography.dart';
 
@@ -272,14 +273,13 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     final active = activeDomains;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Title Generator'),
+            appBar: AppBar(
+                title: const Text('Title Generator'),
+        actions: const <Widget>[ThemeToggleButton()],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -303,7 +303,7 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                     alignment: Alignment.topCenter,
                     child: active.isEmpty
                         ? const SizedBox(width: double.infinity)
-                        : const Padding(
+                        : Padding(
                             padding: EdgeInsets.only(top: 6),
                             child: Text(
                               'Options that fit your picks are shown first. '
@@ -311,7 +311,7 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                               'choose them.',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: AppColors.textGrey,
+                                color: colors.textSecondary,
                               ),
                             ),
                           ),
@@ -325,7 +325,7 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: colors.brand,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     onPressed: isGenerating ? null : generate,
@@ -369,11 +369,11 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
     List<ChipOption> options,
     Set<Domain> active,
   ) {
+    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Card(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -381,8 +381,8 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: AppColors.textGrey,
+                style: TextStyle(
+                  color: colors.textSecondary,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1,
                 ),
@@ -404,20 +404,20 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
   // Free text for a student who already has something specific in mind and
   // can't say it with chips.
   Widget buildOthersSection() {
+    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Card(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'ANYTHING SPECIFIC? (OPTIONAL)',
                 style: TextStyle(
-                  color: AppColors.textGrey,
+                  color: colors.textSecondary,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1,
                 ),
@@ -615,6 +615,8 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return AnimatedOpacity(
       duration: _chipMotion,
       curve: Curves.easeOut,
@@ -626,9 +628,13 @@ class _FilterChip extends StatelessWidget {
         // a chip wider when picked, and the layout above needs a width that
         // doesn't change out from under it.
         showCheckmark: false,
-        selectedColor: AppColors.primary,
+        selectedColor: scheme.primary,
+        // Only the COLOUR is overridden here. Size, weight and family must stay
+        // exactly as _chipLabelStyle declares them, because the same style is
+        // what the TextPainter above measures to reserve each chip's width -
+        // change a metric here and the chips overflow.
         labelStyle: _chipLabelStyle.copyWith(
-          color: isSelected ? Colors.white : AppColors.textDark,
+          color: isSelected ? scheme.onPrimary : scheme.onSurface,
         ),
         labelPadding: const EdgeInsets.symmetric(horizontal: 8),
         padding: const EdgeInsets.symmetric(horizontal: 4),

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
+import '../widgets/theme_toggle_button.dart';
 import '../services/admin_repository.dart';
 import 'admin_portal_page.dart';
 import 'login_page.dart';
@@ -60,9 +61,8 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Confirm Ownership Transfer'),
+                title: const Text('Confirm Ownership Transfer'),
+        actions: const <Widget>[ThemeToggleButton()],
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -83,10 +83,11 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
   }
 
   List<Widget> _buildVerifyStep() {
+    final colors = AppColors.of(context);
     return [
-      const Text(
+      Text(
         'Confirm the owner email you requested this transfer with.',
-        style: TextStyle(color: AppColors.textGrey),
+        style: TextStyle(color: colors.textSecondary),
       ),
       const SizedBox(height: 20),
       TextField(
@@ -99,12 +100,12 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
       ),
       if (_error != null) ...[
         const SizedBox(height: 14),
-        Text(_error!, style: const TextStyle(color: AppColors.primary)),
+        Text(_error!, style: TextStyle(color: colors.brand)),
       ],
       const SizedBox(height: 20),
       FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: colors.brand,
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         onPressed: _busy ? null : _verify,
@@ -115,12 +116,13 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
   }
 
   List<Widget> _buildConfirmStep() {
+    final colors = AppColors.of(context);
     final target = _target!;
     return [
-      const Icon(
+      Icon(
         Icons.workspace_premium_outlined,
         size: 48,
-        color: AppColors.primary,
+        color: colors.brand,
       ),
       const SizedBox(height: 16),
       Text(
@@ -129,21 +131,21 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         'You will move to the Admin role. This takes effect immediately and '
         'is not automatically reversible - you would need the new owner to '
         'transfer it back.',
         textAlign: TextAlign.center,
-        style: TextStyle(color: AppColors.textGrey),
+        style: TextStyle(color: colors.textSecondary),
       ),
       if (_error != null) ...[
         const SizedBox(height: 14),
-        Text(_error!, style: const TextStyle(color: AppColors.primary)),
+        Text(_error!, style: TextStyle(color: colors.brand)),
       ],
       const SizedBox(height: 20),
       FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: colors.brand,
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         onPressed: _busy ? null : _confirm,

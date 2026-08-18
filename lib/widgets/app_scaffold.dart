@@ -4,6 +4,7 @@ import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
+import 'theme_toggle_button.dart';
 
 /// The page chassis every screen uses.
 ///
@@ -28,6 +29,7 @@ class AppScaffold extends StatelessWidget {
     this.padded = true,
     this.bottomBar,
     this.floatingActionButton,
+    this.showThemeToggle = true,
     this.automaticallyImplyLeading = true,
   });
 
@@ -60,6 +62,10 @@ class AppScaffold extends StatelessWidget {
   final Widget? bottomBar;
   final Widget? floatingActionButton;
   final bool automaticallyImplyLeading;
+
+  /// Appends the light/dark toggle to [actions]. On by default so the control
+  /// is reachable from every screen rather than only from Home.
+  final bool showThemeToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +122,9 @@ class AppScaffold extends StatelessWidget {
         ),
         actions: <Widget>[
           ...actions,
+          // The theme toggle sits last on every screen, so it is always in the
+          // same place no matter which page the reader is on.
+          if (showThemeToggle) const ThemeToggleButton(),
           SizedBox(width: context.pagePadding - AppSpacing.sm),
         ],
         bottom: PreferredSize(

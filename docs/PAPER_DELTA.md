@@ -10,7 +10,7 @@
 |---|---|
 | Paper revision | `NEW APPSTONE.docx` (revision pending — system refinement first) |
 | Overhaul started | 2026-08-17 |
-| Status | Phases 0–2 complete · Phases 3–5 pending |
+| Status | Phases 0–2 complete · Phase 3: 7 screens rebuilt + dark mode correct on all 22 screens · Phases 4–5 pending |
 | Verification | `flutter analyze` clean (2 pre-existing deprecations in `admin_portal_page.dart`) · all 65 tests passing · `flutter build web --release` succeeds |
 
 ---
@@ -130,10 +130,13 @@ Each of these needs a new entry in the paper's scope section (§1.4.1) and proba
 | N4 | AI Workflow home preview | Read-only timeline bar of the saved plan, segments proportional to scheduled days and coloured done / overdue / upcoming, built entirely from `WorkflowPlan.schedule()` | Makes the deadline visible without opening the module | `lib/screens/dashboard_screen.dart` | §B.4 | ✅ Phase 2 |
 | N5 | Continue where you left off | One card on Home deep-linking to the student's most relevant next action | Reduces friction returning to the app; only links to screens that already exist | `lib/screens/dashboard_screen.dart` | §B | ✅ Phase 2 |
 | N6 | Premium upsell screen | A designed screen naming the feature they tried to open, listing what premium contains, and explaining that the administrator arranges it | The paywall was a grey snackbar reading "Avail premium to access this feature." Same trigger, same permission logic — a restyle of an existing state | `lib/widgets/premium_upsell.dart` | §A.3/§A.4 | ✅ Phase 2 |
-| N7 | Defense results charts | Animated score dial + radar chart over the four metrics the AI already returns | §B.3.7 already promises a "Performance Breakdown Dashboard" — this delivers what the paper claims | `lib/widgets/charts/`, `lib/screens/defense_results_screen.dart` | §B.3.7 (existing) | 🔄 primitives built Phase 1, wired Phase 3 |
+| N7 | Defense results charts | Animated score dial + radar chart over the four metrics the AI already returns | §B.3.7 already promises a "Performance Breakdown Dashboard" — this delivers what the paper claims | `lib/widgets/charts/`, `lib/screens/defense_results_screen.dart` | §B.3.7 (existing) | ✅ Phase 3 |
 | N8 | Admin search | Filter groups and students by name, email, or student ID | The admin portal had no search at all | `lib/screens/admin_portal_page.dart` | §A | ⬜ Phase 4 |
 | N9 | Skeleton loading + friendly errors | Shimmer placeholders while loading; plain-English error messages with a Try Again button | Previously 19 bare spinners and raw exception strings shown to users | `lib/widgets/states/`, `lib/services/friendly_error.dart` | §4.4.1 or testing section | 🔄 built Phase 1, rolled out Phases 3–4 |
 | N10 | Branded web loading splash | Maroon splash with the Appstone mark while the web build boots | The browser previously showed a blank white page for several seconds | `web/index.html` | §1.4.2.J | ⬜ Phase 5 |
+| N11 | Export results as PDF | "Export as PDF" on the Defense Results screen and the Paper Checker report, producing a branded A4 document with the score, metric bars, rubric breakdown, formatting table and a disclaimer | Students can save or hand a real document to their adviser. Uses the `pdf` + `printing` packages already in the project for the admin credential sheet, so no dependency was added, and it prints only data the screen already shows | `lib/services/report_printer.dart` | New subsection under §B.3.7 and §B.5 | ✅ Phase 3 |
+| N12 | Split login layout | Branded panel + form side by side above 1024 px; compact lockup above the form on phones | The login screen was a 420 px column on every screen size. First impression of the system | `lib/screens/login_page.dart` | §4.4.1 (new) | ✅ Phase 3 |
+| N13 | Live countdown ring | The defense timer is a ring that drains with the clock, shifts calm → warning → danger, and breathes in the last 30 seconds | §B.3.1 promises a timed question display "to feel the pressure"; a static text pill did not deliver that | `lib/screens/title_defense_screen.dart` | §B.3.1 (existing) | ✅ Phase 3 |
 
 ### Explicitly cut from scope
 
@@ -159,8 +162,8 @@ Things a user or panelist would notice behaving differently, even where the pape
 | C2 | Errors surfaced as raw `error.toString()`, including Firebase exception text | Plain-English messages with a **Try Again** action | 🔄 Phases 2–4 |
 | C3 | Session History and Paper Check History were two separate destinations reached from two different screens | Both reached through one **Progress** destination (both screens still exist as separate files) | 🔄 Progress destination live Phase 2; segmented control Phase 3 |
 | C4 | Admin student lists were a 6-column table that scrolled sideways on phones | Below 600 px they render as stacked cards | ⬜ Phase 4 |
-| C5 | Every screen was a 760 px column centred on any monitor | Screens with a natural split use a two-column desktop layout above 1024 px | ⬜ Phase 3 |
-| C6 | Defense results were a text score with plain progress bars | Animated score dial, radar chart, staggered reveals, rank badge | ⬜ Phase 3 |
+| C5 | Every screen was a 760 px column centred on any monitor | Screens with a natural split use a two-column desktop layout above 1024 px | 🔄 Phase 3 — done on paper checker, defense session, defense results, login |
+| C6 | Defense results were a text score with plain progress bars | Animated score dial, radar chart, staggered reveals, rank badge | ✅ Phase 3 |
 | C7 | No navigation persisted between screens | Persistent shell with four destinations, adapting to window size | ✅ Phase 2 |
 | C8 | Single hardcoded light theme | Light + dark, user-toggleable, persisted | ✅ Phase 2 |
 | C9 | The student dashboard header was a solid maroon banner with the student's name and icon buttons | An app bar with the Appstone mark, an account menu (name, group, change password, log out) and the theme toggle; the greeting and group chips moved into the page body | ✅ Phase 2 |
@@ -181,14 +184,16 @@ Useful evidence for the paper's testing / QA discussion.
 | D4 | `ai_workflow_screen.dart:288` | Status `Row` with four unconstrained children and no `Flexible` — overflows on narrow screens or raised text scale | ⬜ |
 | D5 | `icon_tile.dart:66` | `AppFeatureCard` had a fixed `height: 272` wrapped around unbounded text — overflows above ~1.4× text scale or when the card is narrow. Now sizes to content with a minimum height, and both text runs are bounded with `maxLines` + ellipsis | ✅ Phase 2 |
 | D17 | `title_generator_screen.dart:52` | **Introduced and fixed during Phase 1.** `_chipLabelStyle` set no font family, so the `TextPainter` that measures chip widths resolved the platform default while the rendered chip inherited the theme family. Harmless while both were Roboto; once the app moved to Plus Jakarta Sans the two disagreed and chips would have overflowed their reserved width. The four widget tests would not have caught it because they run against the default theme. The family and weight are now pinned into the measured style | ✅ Phase 1 |
+| D18 | 13 screens (`ai_workflow_screen.dart`, `capstone_manual_screen.dart`, `title_generator_screen.dart`, `session_history_screen.dart`, admin pages, …) | **Dark mode was unreadable on every screen not yet migrated.** Those screens hardcoded `Card(color: Colors.white)` and `Scaffold(backgroundColor: AppColors.background)` (a light constant), but their `Text` widgets carried no explicit colour — so text inherited the *dark* theme's light-on-dark colour and rendered light grey on a white card. Fixed by deleting the hardcoded surfaces so both inherit `cardTheme`/`scaffoldBackgroundColor`, which resolve per brightness; the 3 `AppColors.textDark` sites and the Title Generator chip labels were repointed at the theme's `colorScheme` | ✅ Phase 3 |
+| D19 | All 13 previously-unmigrated screens | **Dark mode fixed properly.** Every screen was moved off the legacy const palette (`lib/app_colors.dart`) onto the brightness-aware `AppColors.of(context)`: 118 legacy colour references remapped, `Colors.green`/`Colors.orange` replaced with the `success`/`warning` tokens, the three hardcoded light tints (`0xFFECECEC`, `0xFFFDECEC`, `0xFFFFF8E7`) replaced with `surfaceSunken`/`dangerTint`/`warningTint`, and two `fillColor: Colors.white` text fields repointed at `surface`. `lib/app_colors.dart` was then **deleted**, so no screen can regress onto a fixed light colour. Layout, structure and copy on these screens were left untouched | ✅ Phase 3 |
 | D6 | `import_students_page.dart:174` | Button `Row` with no `Wrap` — overflows in the narrow admin drawer layout | ⬜ |
 | D7 | `audit_log_page.dart:126`, `session_history_screen.dart:319` | `Row(mainAxisSize.min)` containing an unbounded `Text` placed inside a `Wrap` — long emails overflow with no ellipsis | ⬜ |
 | D8 | `title_generator_screen.dart:541` | Hand-rolled chip wrap cannot break a chip wider than the available width — clips at large text scale on narrow screens | ⬜ |
-| D9 | `auth_guard.dart:109` | `_PremiumRequired` is not scrollable — overflows on a short landscape phone | ⬜ |
+| D9 | `auth_guard.dart:109` | `_PremiumRequired` is not scrollable — overflows on a short landscape phone | ✅ Phase 3 — replaced by the scrollable premium upsell screen |
 | D10 | `admin_management_page.dart`, `audit_log_page.dart`, `import_students_page.dart` | No content max-width cap — stretch edge-to-edge on a wide monitor | ⬜ |
 | D11 | `section_header.dart:36` | Long student name at `fontSize: 26` with no `maxLines`/ellipsis | ⬜ |
-| D12 | `auth_guard.dart:51` | `_isPremiumStudent` has no `catch`, so a Firestore/network error is indistinguishable from "not premium" | ⬜ |
-| D13 | `defense_results_screen.dart:43` | `maxWidth: 680` where every other student screen uses `760` | ⬜ |
+| D12 | `auth_guard.dart:51` | `_isPremiumStudent` has no `catch`, so a Firestore/network error is indistinguishable from "not premium" | ✅ Phase 3 — a lookup failure now shows a retryable error, not a paywall |
+| D13 | `defense_results_screen.dart:43` | `maxWidth: 680` where every other student screen uses `760` | ✅ Phase 3 — student screens now use the shared AppContentWidth scale |
 | D14 | `web/manifest.json` | `orientation: "portrait-primary"` locks tablets and installed desktop PWAs to portrait | ⬜ Phase 5 |
 | D15 | `pubspec.yaml`, `web/manifest.json`, `web/index.html` | All three still describe the app as "A new Flutter project." | 🔄 `pubspec.yaml` and `index.html` fixed Phase 1–2; `manifest.json` Phase 5 |
 | D16 | `web/index.html:50` | PWA install button was `#9E1B1F`, not the brand `#8B1A1A` | ✅ moot — the install button was removed entirely (see C10) |

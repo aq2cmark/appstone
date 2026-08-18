@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
-import '../app_colors.dart';
+import '../theme/app_colors.dart';
 import '../services/admin_repository.dart';
 import '../services/student_import_service.dart';
 
@@ -36,6 +36,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -50,14 +51,14 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Download the template, replace the example rows with your '
                   'students, then upload the file here. It needs three columns '
                   'in the first row: Name, Email, and Group. Each student is '
                   'auto-assigned a Student ID and a temporary password. Groups '
                   'named in the file are created if they do not exist yet '
                   '(max 5 members each).',
-                  style: TextStyle(color: AppColors.textGrey),
+                  style: TextStyle(color: colors.textSecondary),
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -66,7 +67,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                   children: [
                     FilledButton.icon(
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: colors.brand,
                       ),
                       onPressed: _busy ? null : _pickAndParse,
                       icon: const Icon(Icons.upload_file),
@@ -83,7 +84,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                   const SizedBox(height: 10),
                   Text(
                     'Selected: $_fileName',
-                    style: const TextStyle(color: AppColors.textGrey),
+                    style: TextStyle(color: colors.textSecondary),
                   ),
                 ],
               ],
@@ -92,7 +93,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 16),
-          _messageCard(Icons.error_outline, AppColors.primary, _error!),
+          _messageCard(Icons.error_outline, colors.brand, _error!),
         ],
         if (_busy) ...[
           const SizedBox(height: 24),
@@ -113,6 +114,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
   // ---- Preview --------------------------------------------------------------
 
   Widget _buildPreview(ImportPreview preview) {
+    final colors = AppColors.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -128,13 +130,13 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
               spacing: 12,
               runSpacing: 8,
               children: [
-                _pill('${preview.validCount} valid', Colors.green),
+                _pill('${preview.validCount} valid', colors.success),
                 if (preview.errorCount > 0)
-                  _pill('${preview.errorCount} with errors', AppColors.primary),
+                  _pill('${preview.errorCount} with errors', colors.brand),
                 if (preview.groupsToCreate.isNotEmpty)
                   _pill(
                     'Creates: ${preview.groupsToCreate.join(', ')}',
-                    AppColors.gold,
+                    colors.premium,
                   ),
               ],
             ),
@@ -159,10 +161,10 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                         DataCell(Text(row.data.group)),
                         DataCell(
                           row.isOk
-                              ? _pill('OK', Colors.green)
+                              ? _pill('OK', colors.success)
                               : Tooltip(
                                   message: row.message,
-                                  child: _pill(row.message, AppColors.primary),
+                                  child: _pill(row.message, colors.brand),
                                 ),
                         ),
                       ],
@@ -175,7 +177,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
               children: [
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: colors.brand,
                   ),
                   onPressed: preview.validCount == 0 || _busy ? null : _import,
                   icon: const Icon(Icons.group_add),
@@ -194,6 +196,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
   // ---- Result ---------------------------------------------------------------
 
   Widget _buildResult(StudentImportResult result) {
+    final colors = AppColors.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -202,7 +205,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
           children: [
             Row(
               children: [
-                const Icon(Icons.check_circle, color: Colors.green),
+                Icon(Icons.check_circle, color: colors.success),
                 const SizedBox(width: 8),
                 Text(
                   'Imported ${result.created.length} student(s)',
@@ -214,11 +217,11 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
               ],
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Copy these credentials now and give them to the students. The '
               'temporary passwords are also shown on each group in the '
               'dashboard.',
-              style: TextStyle(color: AppColors.textGrey),
+              style: TextStyle(color: colors.textSecondary),
             ),
             const SizedBox(height: 12),
             if (result.created.isNotEmpty) ...[
@@ -258,14 +261,14 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
               const SizedBox(height: 16),
               _messageCard(
                 Icons.warning_amber_rounded,
-                AppColors.gold,
+                colors.premium,
                 '${result.failures.length} row(s) could not be imported:\n'
                 '${result.failures.map((f) => '- ${f.row.name}: ${f.message}').join('\n')}',
               ),
             ],
             const SizedBox(height: 16),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+              style: FilledButton.styleFrom(backgroundColor: colors.brand),
               onPressed: _reset,
               icon: const Icon(Icons.refresh),
               label: const Text('Import another file'),

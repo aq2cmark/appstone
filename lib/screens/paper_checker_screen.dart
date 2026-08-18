@@ -1,17 +1,25 @@
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app_colors.dart';
 import '../services/docx_layout_checker.dart';
 import '../services/paper_check_controller.dart';
 import '../services/paper_checker_service.dart';
+import '../services/report_printer.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
+import '../widgets/charts/score_dial.dart';
+import '../widgets/icon_tile.dart';
+import '../widgets/states/app_states.dart';
 import 'auth_gate.dart';
 
-// Paper Checker: uploads a capstone manuscript, extracts its text, and grades
-// it against Section 8.3 of the Capstone Manual (the 50-point manuscript
-// rubric). It reports a score per rubric section plus the concrete "wrongs"
-// the student needs to fix.
+/// Paper Checker: uploads a capstone manuscript, extracts its text, and grades
+/// it against Section 8.3 of the Capstone Manual (the 50-point manuscript
+/// rubric). It reports a score per rubric section plus the concrete issues the
+/// student needs to fix.
 class PaperCheckerScreen extends StatefulWidget {
   const PaperCheckerScreen({super.key});
 
@@ -27,197 +35,255 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
 
   // The file the user has picked but not yet checked (screen-local).
   PlatformFile? _selectedFile;
+  bool _printing = false;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        title: const Text('Paper Checker'),
-        actions: [
-          IconButton(
-            tooltip: 'Check history',
-            onPressed: () =>
-                Navigator.pushNamed(context, '/paper-check-history'),
-            icon: const Icon(Icons.history),
-          ),
-        ],
-      ),
-      body: ListenableBuilder(
-        listenable: _controller,
-        builder: (context, _) {
-          final running = _controller.running;
-          final review = _controller.review;
-          final layout = _controller.layout;
-          final error = _controller.error;
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Upload your capstone manuscript. It is graded against '
-                        'the Capstone Manual manuscript rubric (50 pts), with the '
-                        'exact issues to fix in each chapter.',
-                        style: TextStyle(fontSize: 15),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildUploadCard(),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: running ? null : _runCheck,
-                        icon: running
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.fact_check),
-                        label: Text(running ? 'Checking...' : 'Check Paper'),
-                      ),
-                      if (running) ...[
-                        const SizedBox(height: 20),
-                        _buildLoadingCard(),
-                      ],
-                      if (error != null) ...[
-                        const SizedBox(height: 16),
-                        _buildErrorCard(error),
-                      ],
-                      if (review != null) ...[
-                        const SizedBox(height: 20),
-                        _buildScoreCard(review),
-                      ],
-                      if (layout != null) ...[
-                        const SizedBox(height: 16),
-                        _buildLayoutCard(layout),
-                      ] else if (_controller.layoutSkipped) ...[
-                        const SizedBox(height: 16),
-                        _buildLayoutNote(),
-                      ],
-                      if (review != null) ...[
-                        const SizedBox(height: 16),
-                        for (final section in review.sections)
-                          _buildSectionCard(section),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'This is an AI pre-check to help you improve the '
-                          'paper. It is not the official panel grade, which also '
-                          'weighs the software and oral defense.',
-                          style: TextStyle(
-                            color: AppColors.textGrey,
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
+    final colors = AppColors.of(context);
+
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        final review = _controller.review;
+
+        return AppScaffold(
+          title: 'Paper Checker',
+          subtitle: 'Graded against the manuscript rubric',
+          accent: colors.modulePaper,
+          maxContentWidth: AppContentWidth.wide,
+          automaticallyImplyLeading: false,
+          actions: <Widget>[
+            if (review != null)
+              IconButton(
+                tooltip: 'Export as PDF',
+                onPressed: _printing ? null : _exportPdf,
+                icon: _printing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.picture_as_pdf_outlined),
               ),
-            ],
-          );
-        },
-      ),
+            IconButton(
+              tooltip: 'Check history',
+              onPressed: () =>
+                  Navigator.pushNamed(context, '/paper-check-history'),
+              icon: const Icon(Icons.history_rounded),
+            ),
+          ],
+          // Upload controls stay pinned on the left on a wide window while the
+          // results scroll on the right, so re-checking a revised draft does not
+          // mean scrolling back past the whole report.
+          body: AppTwoColumn(
+            sideWidth: 340,
+            sideFirstWhenStacked: true,
+            side: _buildControls(),
+            main: _buildResults(),
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Left / top: upload and run
+  // ---------------------------------------------------------------------------
+
+  Widget _buildControls() {
+    final colors = AppColors.of(context);
+    final running = _controller.running;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _buildUploadCard(),
+        AppSpacing.vLg,
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.modulePaper,
+            minimumSize: const Size.fromHeight(50),
+          ),
+          onPressed: running ? null : _runCheck,
+          icon: running
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.onColor,
+                  ),
+                )
+              : const Icon(Icons.fact_check_rounded),
+          label: Text(running ? 'Checking...' : 'Check paper'),
+        ),
+        AppSpacing.vLg,
+        Text(
+          'Your manuscript is graded against the Capstone Manual rubric '
+          '(50 points), with the exact issues to fix in each chapter. '
+          'A .docx file is also measured for margins, spacing and font.',
+          style: AppTypography.bodySmall.copyWith(color: colors.textSecondary),
+        ),
+      ],
     );
   }
 
   Widget _buildUploadCard() {
+    final colors = AppColors.of(context);
+    final file = _selectedFile;
+    final running = _controller.running;
+
     return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const Icon(Icons.upload_file, color: AppColors.primary, size: 56),
-            const SizedBox(height: 12),
-            Text(
-              _selectedFile?.name ??
-                  _controller.fileName ??
-                  'Tap to select document',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _selectedFile != null
-                  ? _fileSizeText(_selectedFile!.size)
-                  : (_controller.fileName != null
-                        ? (_controller.running ? 'Checking…' : 'Last checked')
-                        : 'PDF, DOCX, or TXT'),
-              style: const TextStyle(color: AppColors.textGrey),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: _controller.running ? null : _pickPaper,
-              icon: const Icon(Icons.folder_open),
-              label: const Text('Select File'),
-            ),
-          ],
+      child: InkWell(
+        onTap: running ? null : _pickPaper,
+        borderRadius: AppRadius.lgAll,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            children: <Widget>[
+              IconBadge(
+                icon: file == null
+                    ? Icons.upload_file_rounded
+                    : Icons.description_rounded,
+                color: colors.modulePaper,
+                size: AppSize.tileLg,
+                soft: true,
+              ),
+              AppSpacing.vMd,
+              Text(
+                file?.name ?? 'Choose your manuscript',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.titleMedium.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+              AppSpacing.vXs,
+              Text(
+                file == null
+                    ? 'PDF, DOCX or TXT'
+                    : _fileSizeText(file.size),
+                textAlign: TextAlign.center,
+                style: AppTypography.bodySmall.copyWith(
+                  color: colors.textSecondary,
+                ),
+              ),
+              if (file != null) ...<Widget>[
+                AppSpacing.vMd,
+                TextButton.icon(
+                  onPressed: running ? null : _pickPaper,
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                  label: const Text('Choose a different file'),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLoadingCard() {
+  // ---------------------------------------------------------------------------
+  // Right / bottom: results
+  // ---------------------------------------------------------------------------
+
+  Widget _buildResults() {
+    final colors = AppColors.of(context);
+    final running = _controller.running;
+    final review = _controller.review;
+    final layout = _controller.layout;
+    final error = _controller.error;
+
+    if (running) return _buildRunningState();
+
+    if (error != null) {
+      return AppErrorView(
+        message: error,
+        title: 'Could not check this paper',
+        onRetry: _selectedFile == null ? null : _runCheck,
+      );
+    }
+
+    if (review == null) {
+      return AppEmptyView(
+        icon: Icons.fact_check_outlined,
+        accent: colors.modulePaper,
+        title: 'No check yet',
+        body: 'Pick your manuscript and run a check. You will get a rubric '
+            'score, a formatting report, and the specific issues to fix.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        StaggeredEntrance(index: 0, child: _buildScoreCard(review)),
+        AppSpacing.vLg,
+        if (layout != null)
+          StaggeredEntrance(index: 1, child: _buildLayoutCard(layout))
+        else if (_controller.layoutSkipped)
+          StaggeredEntrance(index: 1, child: _buildLayoutNote()),
+        AppSpacing.vXl,
+        StaggeredEntrance(
+          index: 2,
+          child: AppSection(
+            label: 'Rubric breakdown',
+            accent: colors.modulePaper,
+            child: Column(
+              children: <Widget>[
+                for (final section in review.sections) ...<Widget>[
+                  _buildSectionCard(section),
+                  AppSpacing.vMd,
+                ],
+              ],
+            ),
+          ),
+        ),
+        AppSpacing.vSm,
+        OutlinedButton.icon(
+          onPressed: _printing ? null : _exportPdf,
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('Export report as PDF'),
+        ),
+        AppSpacing.vLg,
+        Text(
+          'This is an AI pre-check to help you improve the paper. It is not '
+          'the official panel grade, which also weighs the software and the '
+          'oral defense.',
+          style: AppTypography.bodySmall.copyWith(color: colors.textTertiary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRunningState() {
+    final colors = AppColors.of(context);
+
     return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: const Padding(
-        padding: EdgeInsets.all(24),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
-          children: [
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: AppColors.primary,
+          children: <Widget>[
+            const AppLoading(),
+            AppSpacing.vLg,
+            Text(
+              'Analyzing your paper',
+              style: AppTypography.titleMedium.copyWith(
+                color: colors.textPrimary,
               ),
             ),
-            SizedBox(height: 16),
+            AppSpacing.vXs,
             Text(
-              'Analyzing your paper…',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'The AI is reading your manuscript and grading it against the '
-              'rubric. This usually takes 20–60 seconds — keep this screen open.',
+              'Reading every chapter and grading it against the rubric. This '
+              'usually takes 20-60 seconds. You can move around the app - the '
+              'check keeps running and the result will be here when you '
+              'come back.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textGrey),
+              style: AppTypography.bodySmall.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard(String message) {
-    return Card(
-      color: const Color(0xFFFDECEC),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.error_outline, color: AppColors.primary),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
           ],
         ),
       ),
@@ -225,282 +291,341 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
   }
 
   Widget _buildScoreCard(PaperReview review) {
-    final color = _scoreColor(review.percent);
-    return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Manuscript Score',
-                        style: TextStyle(
-                          color: AppColors.textGrey,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        review.verdict,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
-                      ),
-                    ],
-                  ),
+    final colors = AppColors.of(context);
+    final tone = _scoreColor(review.percent);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.xlAll,
+        border: Border.all(color: colors.tintBorder(tone)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[colors.tint(tone), colors.surface],
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 460;
+
+          final dial = ScoreDial(
+            score: review.totalScore,
+            maxScore: review.maxScore,
+            size: 150,
+            color: tone,
+            label: 'rubric points',
+          );
+
+          final details = Column(
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                review.verdict,
+                textAlign: narrow ? TextAlign.center : TextAlign.start,
+                style: AppTypography.headlineSmall.copyWith(
+                  color: colors.textPrimary,
                 ),
+              ),
+              if (review.summary.trim().isNotEmpty) ...<Widget>[
+                AppSpacing.vSm,
                 Text(
-                  '${review.totalScore}/${review.maxScore}',
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    color: color,
+                  review.summary.trim(),
+                  textAlign: narrow ? TextAlign.center : TextAlign.start,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: colors.textSecondary,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: review.percent,
-                minHeight: 10,
-                backgroundColor: const Color(0xFFECECEC),
-                color: color,
-              ),
-            ),
-            if (review.summary.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(review.summary, style: const TextStyle(height: 1.4)),
             ],
-          ],
-        ),
+          );
+
+          if (narrow) {
+            return Column(children: <Widget>[dial, AppSpacing.vLg, details]);
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              dial,
+              AppSpacing.hXl,
+              Expanded(child: details),
+            ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildLayoutCard(LayoutReport layout) {
-    final ratio = layout.total == 0 ? 0.0 : layout.passCount / layout.total;
-    final color = _scoreColor(ratio);
-    return Card(
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Layout Compliance',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+    final colors = AppColors.of(context);
+    final allPassed = layout.passCount == layout.total;
+    final tone = allPassed ? colors.success : colors.warning;
+
+    return AppSection(
+      label: 'Formatting compliance',
+      accent: colors.modulePaper,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  IconBadge(
+                    icon: allPassed
+                        ? Icons.verified_rounded
+                        : Icons.rule_rounded,
+                    color: tone,
+                    size: 44,
+                    soft: true,
+                  ),
+                  AppSpacing.hLg,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '${layout.passCount} of ${layout.total} rules met',
+                          style: AppTypography.titleMedium.copyWith(
+                            color: colors.textPrimary,
+                          ),
                         ),
+                        AppSpacing.vXs,
+                        Text(
+                          'Measured from the .docx itself - margins, spacing, '
+                          'font and paper size, per Capstone Manual 10.3.',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              AppSpacing.vLg,
+              for (final rule in layout.rules)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Icon(
+                        rule.pass
+                            ? Icons.check_circle_rounded
+                            : Icons.cancel_rounded,
+                        size: AppSize.iconSm,
+                        color: rule.pass ? colors.success : colors.danger,
                       ),
-                      Text(
-                        'Section 10.3 - Standard Format (.docx)',
-                        style: TextStyle(color: AppColors.textGrey),
+                      AppSpacing.hMd,
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: <InlineSpan>[
+                              TextSpan(
+                                text: rule.name,
+                                style: AppTypography.bodyMedium.copyWith(
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '  ${rule.actual}',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                              if (!rule.pass)
+                                TextSpan(
+                                  text: '  (expected ${rule.expected})',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: colors.danger,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  '${layout.passCount}/${layout.total}',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: ratio,
-                minHeight: 8,
-                backgroundColor: const Color(0xFFECECEC),
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final rule in layout.rules)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      rule.pass
-                          ? Icons.check_circle
-                          : Icons.cancel_outlined,
-                      size: 18,
-                      color: rule.pass ? Colors.green : AppColors.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: RichText(
-                        text: TextSpan(
-                          style: const TextStyle(color: AppColors.textDark),
-                          children: [
-                            TextSpan(
-                              text: '${rule.name}: ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            TextSpan(
-                              text: rule.pass
-                                  ? rule.actual
-                                  : 'found ${rule.actual}, needs ${rule.expected}',
-                              style: TextStyle(
-                                color: rule.pass
-                                    ? AppColors.textGrey
-                                    : AppColors.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildLayoutNote() {
-    return Card(
-      color: const Color(0xFFF3F1EE),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: const Padding(
-        padding: EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline, color: AppColors.grey),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Upload a .docx to also check the layout (margins, line spacing, '
-                'font, and font size against Section 10.3). Layout cannot be '
-                'measured reliably from PDF or TXT files.',
+    final colors = AppColors.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: colors.infoTint,
+        borderRadius: AppRadius.lgAll,
+        border: Border.all(color: colors.tintBorder(colors.info)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(
+            Icons.info_outline_rounded,
+            color: colors.info,
+            size: AppSize.iconMd,
+          ),
+          AppSpacing.hMd,
+          Expanded(
+            child: Text(
+              'Formatting could not be measured. Margins, spacing and font are '
+              'stored inside a .docx file - a PDF or TXT does not carry them. '
+              'Upload the .docx to include the formatting check.',
+              style: AppTypography.bodySmall.copyWith(
+                color: colors.textSecondary,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSectionCard(RubricResult section) {
+    final colors = AppColors.of(context);
     final ratio = section.max == 0 ? 0.0 : section.score / section.max;
-    final color = _scoreColor(ratio);
+    final tone = _scoreColor(ratio);
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Theme(
-        // Remove the default divider lines on the ExpansionTile for a cleaner
-        // card look.
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          leading: CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.15),
-            child: Text(
-              '${section.score}',
-              style: TextStyle(color: color, fontWeight: FontWeight.bold),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        tilePadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.xs,
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          0,
+          AppSpacing.lg,
+          AppSpacing.lg,
+        ),
+        title: Text(
+          section.name,
+          style: AppTypography.titleSmall.copyWith(color: colors.textPrimary),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.sm),
+          child: ClipRRect(
+            borderRadius: AppRadius.smAll,
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 6,
+              color: tone,
+              backgroundColor: colors.surfaceSunken,
             ),
           ),
-          title: Text(
-            section.name,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
           ),
-          subtitle: Text('${section.score} of ${section.max} points'),
-          children: [
-            if (section.comment.isNotEmpty)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  section.comment,
-                  style: const TextStyle(height: 1.4),
+          decoration: BoxDecoration(
+            color: colors.tint(tone),
+            borderRadius: AppRadius.pillAll,
+          ),
+          child: Text(
+            '${section.score}/${section.max}',
+            style: AppTypography.labelMedium.copyWith(color: tone),
+          ),
+        ),
+        children: <Widget>[
+          if (section.comment.trim().isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                section.comment.trim(),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: colors.textSecondary,
                 ),
               ),
-            if (section.issues.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Issues to fix',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+            ),
+          if (section.issues.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.md),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: AppSize.iconSm,
+                    color: colors.success,
                   ),
-                ),
+                  AppSpacing.hSm,
+                  Text(
+                    'No major issues flagged.',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: colors.success,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              for (final issue in section.issues)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        size: 18,
-                        color: Colors.orange,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(issue)),
-                    ],
-                  ),
-                ),
-            ] else ...[
-              const SizedBox(height: 8),
-              const Align(
-                alignment: Alignment.centerLeft,
+            )
+          else ...<Widget>[
+            AppSpacing.vMd,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'ISSUES TO FIX',
+                style: AppTypography.eyebrow.copyWith(color: colors.danger),
+              ),
+            ),
+            AppSpacing.vSm,
+            for (final issue in section.issues)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: Row(
-                  children: [
-                    Icon(Icons.check_circle, size: 18, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('No major issues flagged.'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.danger,
+                        ),
+                      ),
+                    ),
+                    AppSpacing.hSm,
+                    Expanded(
+                      child: Text(
+                        issue,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
   Future<void> _pickPaper() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf', 'docx', 'txt'],
+      allowedExtensions: <String>['pdf', 'docx', 'txt'],
       // We need the bytes in memory to read the document text.
       withData: true,
     );
@@ -512,9 +637,7 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
   Future<void> _runCheck() async {
     final file = _selectedFile;
     if (file == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a paper first.')),
-      );
+      showMessageSnack(context, 'Select a paper first.', isError: true);
       return;
     }
     // The student identity is read here (as defense practice does) and handed
@@ -529,10 +652,29 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
     );
   }
 
+  Future<void> _exportPdf() async {
+    final review = _controller.review;
+    if (review == null) return;
+
+    setState(() => _printing = true);
+    try {
+      await ReportPrinter.printPaperReview(
+        review: review,
+        fileName: _controller.fileName ?? 'Manuscript',
+        layout: _controller.layout,
+      );
+    } catch (error) {
+      if (mounted) showErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
   Color _scoreColor(double ratio) {
-    if (ratio >= 0.75) return Colors.green.shade700;
-    if (ratio >= 0.5) return Colors.orange.shade800;
-    return AppColors.primary;
+    final colors = AppColors.of(context);
+    if (ratio >= 0.75) return colors.success;
+    if (ratio >= 0.5) return colors.warning;
+    return colors.danger;
   }
 
   String _fileSizeText(int bytes) {
