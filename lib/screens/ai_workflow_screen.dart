@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
@@ -112,10 +113,10 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: StaggeredEntrance.list(<Widget>[
-        const Text(
+        Text(
           'Upload your paper and tell us how long you have. The AI builds a '
           'chapter-by-chapter timeline you can track and adjust.',
-          style: TextStyle(fontSize: 15),
+          style: AppTypography.bodyLarge,
         ),
         const SizedBox(height: 16),
         Card(
@@ -501,7 +502,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
           const SizedBox(height: 8),
           SelectableText(
             tips,
-            style: const TextStyle(height: 1.5, fontSize: 14.5),
+            style: AppTypography.bodyMedium.copyWith(height: 1.5),
           ),
         ],
       ),

@@ -194,3 +194,32 @@ No Cloud Function, repository method, or registration/import logic was touched �
 - ✅ **Import errors recoloured** from `brand` to `danger` — an error pill in the brand colour read as decorative rather than a problem.
 
 **Remaining admin gaps (deliberate, not oversights):** `import_students_page` and `print_options_dialog` have no stagger or skeleton — the import page's states are driven by user action rather than a load, and the dialog is transient. The 11 raw `AlertDialog`s are scroll-safe where it mattered (the two multi-field ones were wrapped) but have not been migrated to `AppDialog` wholesale.
+
+---
+
+## Final polish pass
+
+### Measured audit (not estimated)
+| Check | Result |
+|---|---|
+| Bundle | `main.dart.js` 4.4 MB + `canvaskit.wasm` 6.9 MB ≈ 13 MB uncompressed; gzip **is** on in `.htaccess`, so real transfer ≈ 4–5 MB |
+| Graphics perf | Clean — 1 `Opacity`, 3 `ClipRRect`, 1 `BoxShadow` across the whole app. Flat cards removed the shadow cost |
+| Tickers | 4 repeating animations, all gated by `TickerMode` |
+| Type scale | 83 inline `TextStyle`s / 16 distinct `fontSize` values — outliers now migrated |
+| `.symbols` | 6.1 MB of CanvasKit debug symbols ship to Hostinger; **left alone by your decision** |
+
+**On "is it lagging?" — not answerable here.** Frame timing needs a visible browser pane and screenshots have timed out all session. The structural causes of jank are absent, but that is not the same as measuring it.
+
+### Opening + login
+- ✅ **Splash logo draws itself** — each stroke of the "A" animates on via `stroke-dasharray`, staggered 60/200/480 ms. Pure CSS, zero runtime cost, first thing anyone sees.
+- ✅ **Splash → app bar continuity** — on dismiss the mark scales to ~0.34 and rises toward where the app-bar mark sits, while the wordmark and bar fade. An approximation, not a true shared element: the handoff is HTML → Flutter.
+- ✅ **Sign-in button morph** — full-width label → circular spinner → success check. Backed by a `_SubmitState` enum; `_isLoading` became a getter so every existing check still reads correctly. Sign-in is the app's slowest interaction (Auth + a Firestore role read), so the wait needed to look handled.
+- ✅ **Login → Home reveal** — cross-fade + subtle scale instead of a slide. Login is *replaced*, not stacked, so a slide implied a spatial relationship that doesn't exist; Home's stagger plays underneath the fade.
+
+### More motion
+- ✅ **Nav icon spring** on the selected destination, on top of the sliding pill.
+- ✅ **`SuccessPulse`** — new primitive; wired to Grant Premium, where the card stays on screen. *Not* used on Project Context save, which navigates away immediately — the pulse would never be seen.
+- ⬜ **Animated list reorder** — not built. It would fight the staggered entrance already on those lists, and getting both right needs more care than the remaining budget allowed. Flagging rather than shipping something half-working.
+
+### Type scale
+Outliers migrated onto the scale: `32`→`displayMedium`, `14.5`→`bodyMedium`, `13`→`bodySmall`, `15`→`titleMedium`/`bodyLarge`. The `fontSize: 9` "SCORE" label was **below the scale's floor and below comfortable legibility** — now `eyebrow`. Colour-only inline styles were left alone, as agreed.

@@ -47,6 +47,11 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   /// long roster can then be collapsed to make the list scannable.
   final Set<String> _collapsedGroups = <String>{};
 
+  /// The group whose card should flash success, and a counter so the same
+  /// group pulsing twice still animates the second time.
+  String? _pulsedGroupId;
+  int _pulseTick = 0;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -581,9 +586,12 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   Widget buildGroupCard(CapstoneGroup group, List<CapstoneGroup> groups) {
     final colors = AppColors.of(context);
     final collapsed = _collapsedGroups.contains(group.id);
+    final pulse = _pulsedGroupId == group.id ? _pulseTick : 0;
     // One card per capstone group.
     // The DataTable is horizontally scrollable so it still works on mobile.
-    return Card(
+    return SuccessPulse(
+      trigger: pulse,
+      child: Card(
       margin: const EdgeInsets.only(bottom: 24),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -718,6 +726,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             else
               _buildStudentCards(group, groups),
         ],
+      ),
       ),
     );
   }
@@ -1135,6 +1144,14 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
 
     if (confirm != true) return;
     await runAction(() => _repo.grantPremium(group), 'Premium granted.');
+    // Pulse the card so the change is visible where it happened, not only in
+    // a snack bar that may be read after looking away.
+    if (mounted) {
+      setState(() {
+        _pulsedGroupId = group.id;
+        _pulseTick++;
+      });
+    }
   }
 
   Future<void> renameGroup(CapstoneGroup group) async {

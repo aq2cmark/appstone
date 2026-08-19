@@ -238,10 +238,7 @@ class _AuditLogPageState extends State<AuditLogPage> {
                 children: [
                   Text(
                     entry.description,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                    style: AppTypography.titleMedium,
                   ),
                   const SizedBox(height: 6),
                   Wrap(
@@ -270,7 +267,7 @@ class _AuditLogPageState extends State<AuditLogPage> {
         const SizedBox(width: 4),
         Text(
           text,
-          style: TextStyle(color: colors.textSecondary, fontSize: 13),
+          style: AppTypography.bodySmall.copyWith(color: colors.textSecondary),
         ),
       ],
     );

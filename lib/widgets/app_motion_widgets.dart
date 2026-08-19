@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 
@@ -272,6 +273,73 @@ class AnimatedProgressBar extends StatelessWidget {
           backgroundColor: backgroundColor,
         ),
       ),
+    );
+  }
+}
+
+/// Briefly washes its child in the success colour when [trigger] changes.
+///
+/// Confirms that a save landed without adding yet another snack bar. The pulse
+/// is keyed off a counter rather than a bool so repeating the same action twice
+/// still animates the second time.
+class SuccessPulse extends StatefulWidget {
+  const SuccessPulse({
+    super.key,
+    required this.trigger,
+    required this.child,
+  });
+
+  /// Increment this to play the pulse.
+  final int trigger;
+  final Widget child;
+
+  @override
+  State<SuccessPulse> createState() => _SuccessPulseState();
+}
+
+class _SuccessPulseState extends State<SuccessPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void didUpdateWidget(covariant SuccessPulse oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.trigger != oldWidget.trigger && widget.trigger > 0) {
+      if (AppMotion.reduced(context)) return;
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        if (_controller.isDismissed) return child!;
+        // Up fast, down slow: the confirmation should register immediately and
+        // then get out of the way.
+        final t = _controller.value;
+        final strength = t < 0.25 ? t / 0.25 : (1 - (t - 0.25) / 0.75);
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: colors.success.withValues(alpha: 0.16 * strength.clamp(0, 1)),
+            borderRadius: AppRadius.lgAll,
+          ),
+          child: child,
+        );
+      },
+      child: widget.child,
     );
   }
 }

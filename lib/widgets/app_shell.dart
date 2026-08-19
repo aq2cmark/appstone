@@ -393,7 +393,15 @@ class _DestinationIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    final icon = Icon(selected ? destination.selectedIcon : destination.icon);
+    // A small spring when this destination becomes active. The indicator pill
+    // already slides; this gives touch a response of its own, since a phone has
+    // no hover state to fall back on.
+    final Widget icon = AnimatedScale(
+      scale: selected ? 1.12 : 1,
+      duration: AppMotion.respect(context, AppMotion.quick),
+      curve: AppMotion.emphasis,
+      child: Icon(selected ? destination.selectedIcon : destination.icon),
+    );
 
     if (!destination.requiresPremium || isPremium) return icon;
 

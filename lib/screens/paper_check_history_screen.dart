@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
@@ -289,10 +290,11 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
               ),
               Text(
                 'SCORE',
-                style: TextStyle(
+                // Was 9px - below the type scale's floor and below what is
+                // comfortably legible. `eyebrow` carries the same tracked,
+                // uppercase intent at a readable size.
+                style: AppTypography.eyebrow.copyWith(
                   color: colors.textSecondary,
-                  fontSize: 9,
-                  letterSpacing: 1,
                 ),
               ),
             ],
