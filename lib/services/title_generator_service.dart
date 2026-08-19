@@ -80,10 +80,14 @@ class TitleGeneratorService {
     String others = '',
   }) {
     final lines = <String>[];
-    if (projectTypes.isNotEmpty) lines.add('Project type: ${projectTypes.join(', ')}');
-    if (targetUsers.isNotEmpty) lines.add('Target users: ${targetUsers.join(', ')}');
-    if (problemAreas.isNotEmpty) lines.add('Problem area: ${problemAreas.join(', ')}');
-    if (technologies.isNotEmpty) lines.add('Technology: ${technologies.join(', ')}');
+    if (projectTypes.isNotEmpty)
+      lines.add('Project type: ${projectTypes.join(', ')}');
+    if (targetUsers.isNotEmpty)
+      lines.add('Target users: ${targetUsers.join(', ')}');
+    if (problemAreas.isNotEmpty)
+      lines.add('Problem area: ${problemAreas.join(', ')}');
+    if (technologies.isNotEmpty)
+      lines.add('Technology: ${technologies.join(', ')}');
     // The student's own words. Last so it reads as the closing instruction, and
     // called out as most important - if they bothered to type something specific
     // it should outrank a chip they tapped.
@@ -91,8 +95,8 @@ class TitleGeneratorService {
 
     return '''
 You are helping an Information Technology capstone/thesis student brainstorm
-project titles. Keep in mind they are students: suggest titles that are feasible
-for them to actually build.
+project titles. Keep in mind they are students: suggest titles that the students
+make with the time they have, make it student friendly.
 
 Generate 5 concise, formal capstone project titles that reflect ALL of these
 selected elements:

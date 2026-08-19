@@ -8,6 +8,27 @@ import 'package:flutter_test/flutter_test.dart';
 // at runtime, so these tests drive a real reorder and let the overflow error
 // fail the build instead.
 void main() {
+  // Reads the chip's real selection state rather than inferring it from colour.
+  bool isSelected(WidgetTester tester, String label) {
+    return tester
+        .widget<ChoiceChip>(
+          find.ancestor(
+            of: find.text(label),
+            matching: find.byType(ChoiceChip),
+          ),
+        )
+        .selected;
+  }
+
+  Future<void> tapChip(WidgetTester tester, String label) async {
+    // Chips reorder as picks accumulate, so one can end up below the fold -
+    // and tapping an off-screen widget quietly does nothing.
+    await tester.ensureVisible(find.text(label));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pumpScreen(WidgetTester tester, {Size? surface}) async {
     if (surface != null) {
       await tester.binding.setSurfaceSize(surface);
@@ -87,5 +108,101 @@ void main() {
     // Proves the tap landed: "Agriculture" shares the farming domain, so a real
     // reorder leaves it selected-adjacent and still on screen.
     expect(find.text('Agriculture'), findsOneWidget);
+  });
+
+  // "Farmers" is Agriculture-only and "Healthcare Workers" is Healthcare-only,
+  // so the second pick is exactly the cross-field case the confirmation exists
+  // for. These guard that the prompt fires when it should, stays out of the way
+  // when it should not, and never selects anything on its own.
+  group('cross-field confirmation', () {
+    testWidgets('the first pick is never questioned', (tester) async {
+      await pumpScreen(tester);
+
+      await tapChip(tester, 'Farmers');
+
+      // Nothing is picked yet, so nothing can clash with it.
+      expect(find.text('Add a chip from another field?'), findsNothing);
+      expect(isSelected(tester, 'Farmers'), isTrue);
+    });
+
+    testWidgets('a chip from an unrelated field asks first and waits', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+
+      await tapChip(tester, 'Healthcare Workers');
+
+      expect(find.text('Add a chip from another field?'), findsOneWidget);
+      // The point of the dialog: the chip must not already be picked behind it.
+      expect(isSelected(tester, 'Healthcare Workers'), isFalse);
+    });
+
+    testWidgets('cancelling leaves the selection exactly as it was', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+      await tapChip(tester, 'Healthcare Workers');
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add a chip from another field?'), findsNothing);
+      expect(isSelected(tester, 'Healthcare Workers'), isFalse);
+      expect(isSelected(tester, 'Farmers'), isTrue);
+    });
+
+    testWidgets('confirming adds the chip - the mix is allowed, not blocked', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+      await tapChip(tester, 'Healthcare Workers');
+
+      await tester.tap(find.text('Add anyway'));
+      await tester.pumpAndSettle();
+
+      expect(isSelected(tester, 'Healthcare Workers'), isTrue);
+      expect(isSelected(tester, 'Farmers'), isTrue);
+    });
+
+    testWidgets('a chip that fits the picked field is not questioned', (
+      tester,
+    ) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+
+      // Same field as Farmers, so there is nothing to warn about.
+      await tapChip(tester, 'Agriculture');
+
+      expect(find.text('Add a chip from another field?'), findsNothing);
+      expect(isSelected(tester, 'Agriculture'), isTrue);
+    });
+
+    testWidgets('a field-agnostic chip is never questioned', (tester) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+
+      // No domain tags at all - a mobile app is at home in any capstone.
+      await tapChip(tester, 'Mobile Application');
+
+      expect(find.text('Add a chip from another field?'), findsNothing);
+      expect(isSelected(tester, 'Mobile Application'), isTrue);
+    });
+
+    testWidgets('removing a pick is never questioned', (tester) async {
+      await pumpScreen(tester);
+      await tapChip(tester, 'Farmers');
+      await tapChip(tester, 'Healthcare Workers');
+      await tester.tap(find.text('Add anyway'));
+      await tester.pumpAndSettle();
+
+      // Un-picking can only ever make the set more coherent.
+      await tapChip(tester, 'Healthcare Workers');
+
+      expect(find.text('Add a chip from another field?'), findsNothing);
+      expect(isSelected(tester, 'Healthcare Workers'), isFalse);
+    });
   });
 }

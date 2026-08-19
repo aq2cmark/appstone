@@ -10,6 +10,7 @@ import '../theme/app_breakpoints.dart';
 import '../services/admin_repository.dart';
 import '../services/credentials_printer.dart';
 import '../services/functions_service.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/states/app_states.dart';
 import '../widgets/states/skeleton.dart';
 import '../widgets/theme_toggle_button.dart';
@@ -1389,6 +1390,19 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   Future<void> logout() async {
+    // Logout sits in the nav list right under the portal's page entries, so it
+    // is a plausible mis-tap - and an admin mid-way through registering a class
+    // should not lose the screen to one.
+    final confirmed = await showConfirmDialog(
+      context: context,
+      title: 'Log out?',
+      message: 'You will need to sign in again to manage groups and students.',
+      confirmLabel: 'Log out',
+      icon: Icons.logout_rounded,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
     await _repo.signOut();
     if (!mounted) return;
     Navigator.pushReplacement(

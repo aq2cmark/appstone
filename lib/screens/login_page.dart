@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/admin_repository.dart';
 import '../services/friendly_error.dart';
 import '../services/functions_service.dart';
+import '../services/session_cache.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
@@ -17,7 +18,6 @@ import '../widgets/theme_toggle_button.dart';
 import '../widgets/appstone_logo.dart';
 import '../widgets/states/app_states.dart';
 import 'admin_portal_page.dart';
-import 'auth_gate.dart';
 import 'dashboard_screen.dart';
 
 // Prefs keys for the "remember me" convenience: whether to remember, and the
@@ -398,6 +398,9 @@ class _LoginPageState extends State<LoginPage> {
           email: email,
           uid: user.uid,
         );
+        // Drop any student session left on this device by a previous user, so
+        // an offline reopen cannot restore it under this admin's login.
+        await clearStudentSession();
         if (!mounted) return;
         _goTo(AdminPortalPage(role: account.role));
         return;
@@ -409,9 +412,17 @@ class _LoginPageState extends State<LoginPage> {
       final student = await _repo.getStudentContextByUid(user.uid);
       if (!mounted) return;
       if (student != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(studentIdPrefsKey, student.student.id);
-        await prefs.setString(groupIdPrefsKey, student.group.id);
+        // Cached in full so the app can reopen offline without a Firestore
+        // round trip - see services/session_cache.dart.
+        await saveStudentSession(
+          studentId: student.student.id,
+          groupId: student.group.id,
+          studentName: student.student.name,
+          groupName: student.group.name,
+          isPremium: student.group.isPremium,
+          mustChangePassword: student.student.mustChangePassword,
+          uid: user.uid,
+        );
         if (!mounted) return;
         _goTo(
           DashboardScreen(
@@ -430,6 +441,7 @@ class _LoginPageState extends State<LoginPage> {
 
       // Signed in but neither admin nor student - refuse and sign back out.
       await _repo.signOut();
+      await clearStudentSession();
       if (!mounted) return;
       setState(
         () => _formError = 'This account is not authorized to sign in here.',

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/title_generator_service.dart';
@@ -23,6 +24,34 @@ enum Domain {
   transport,
   tourism,
   finance,
+}
+
+// How a domain is named to the student. The enum is internal; these strings are
+// what appears in the cross-field confirmation, so they have to read as fields
+// of study rather than identifiers.
+String _domainLabel(Domain domain) => switch (domain) {
+      Domain.education => 'Education',
+      Domain.healthcare => 'Healthcare',
+      Domain.agriculture => 'Agriculture',
+      Domain.commerce => 'E-Commerce',
+      Domain.government => 'Local Governance',
+      Domain.environment => 'Environment',
+      Domain.transport => 'Transportation',
+      Domain.tourism => 'Tourism',
+      Domain.finance => 'Finance',
+    };
+
+// "Education", "Education and Healthcare", "Education, Healthcare and Tourism".
+// Iterates Domain.values rather than the set so the order is stable between
+// builds - a Set<Domain> has no meaningful order of its own.
+String _fieldList(Set<Domain> domains) {
+  final names = <String>[
+    for (final domain in Domain.values)
+      if (domains.contains(domain)) _domainLabel(domain),
+  ];
+  if (names.isEmpty) return 'no particular field';
+  if (names.length == 1) return names.single;
+  return '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
 }
 
 // One selectable filter chip.
@@ -238,14 +267,57 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
     super.dispose();
   }
 
-  void toggle(String value) {
-    setState(() {
-      if (selected.contains(value)) {
-        selected.remove(value);
-      } else {
-        selected.add(value);
+  // Finds the chip behind a label. Labels are unique across all four lists, so
+  // one match is all there is.
+  ChipOption? optionFor(String label) {
+    for (final options in categories) {
+      for (final option in options) {
+        if (option.label == label) return option;
       }
-    });
+    }
+    return null;
+  }
+
+  Future<void> toggle(String value) async {
+    // Dropping a pick never needs a warning - it can only ever make the set
+    // more coherent, and asking would make chips annoying to undo.
+    if (selected.contains(value)) {
+      setState(() => selected.remove(value));
+      return;
+    }
+
+    final active = activeDomains;
+    final option = optionFor(value);
+
+    // The faded chips at the back of each row are reachable on purpose, but
+    // reaching one used to be indistinguishable from a mis-tap: the chip simply
+    // joined the set, and the student found out at Generate, when the titles
+    // came back trying to serve two unrelated fields at once. Confirming makes
+    // the choice deliberate without ever taking it away.
+    if (option != null && !option.isRelatedTo(active)) {
+      final confirmed = await confirmCrossField(option, active);
+      if (!confirmed || !mounted) return;
+    }
+
+    setState(() => selected.add(value));
+  }
+
+  // Names both sides of the mismatch rather than asking a bare "are you sure?".
+  // A student who genuinely wants blockchain for medical records should be able
+  // to read this, recognise their own intent, and carry on.
+  Future<bool> confirmCrossField(ChipOption option, Set<Domain> active) {
+    return showConfirmDialog(
+      context: context,
+      title: 'Add a chip from another field?',
+      message: 'Your picks so far sit in ${_fieldList(active)}. '
+          '"${option.label}" belongs to ${_fieldList(option.domains)}.\n\n'
+          'You can still choose it - a deliberate cross-field capstone is often '
+          'strong work. Just know the title ideas then have to stretch across '
+          'every field you have picked, so they tend to come back vaguer than '
+          'a focused set.',
+      confirmLabel: 'Add anyway',
+      icon: Icons.alt_route_rounded,
+    );
   }
 
   void clearSelection() {

@@ -101,6 +101,11 @@ Open the site and confirm, in this order:
 5. Tap **Answer with Voice** - the browser should ask for microphone permission
    (proves HTTPS is live).
 6. On a phone, the Install button should appear (the PWA manifest is served).
+7. **Offline check.** With the site already loaded once, open DevTools ->
+   Network -> **Offline**, then reload. The app must still boot, and Home ->
+   **Capstone Manual** must open and search normally, with an amber "You're
+   offline" strip at the top. If instead you get a maroon splash that never
+   finishes, `canvaskit/` did not upload - see the note below.
 
 ## 7. Later updates
 
@@ -119,6 +124,15 @@ refresh (Ctrl+Shift+R) settles it.
   Add both domains to Authorized domains if you keep both.
 - The AI daily limits are per Firebase user, counted server-side, so they carry
   over unchanged to the new domain.
+- **Upload `canvaskit/` too.** It is the renderer the app cannot start without.
+  The build pins it to our own origin (`web/flutter_bootstrap.js`) rather than
+  Google's CDN, which is what lets the service worker cache it and lets the
+  Capstone Manual open with no connection. Skipping that folder gives a splash
+  screen that never resolves.
+- **Offline reach is per device and per origin.** A student gets it after one
+  successful load, and loses it if they clear site data, log out, or the domain
+  changes. Only the Capstone Manual works offline - it is compiled into the
+  bundle. Everything AI-backed needs the network and says so.
 - Project context from "Add More Context" is stored per device
   (`shared_preferences`, i.e. browser local storage), not in Firestore - a
   student who switches browsers re-enters it. Moving hosts does not clear it, but

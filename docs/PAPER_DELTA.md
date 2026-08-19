@@ -10,8 +10,8 @@
 |---|---|
 | Paper revision | `NEW APPSTONE.docx` (revision pending — system refinement first) |
 | Overhaul started | 2026-08-17 |
-| Status | Phases 0–2 complete · Phase 3: 7 screens rebuilt + dark mode correct on all 22 screens · Phases 4–5 pending |
-| Verification | `flutter analyze` clean (2 pre-existing deprecations in `admin_portal_page.dart`) · all 65 tests passing · `flutter build web --release` succeeds |
+| Status | Phases 0–2 complete · Phase 3: 7 screens rebuilt + dark mode correct on all 22 screens · Phases 4–5 pending · offline Capstone Manual shipped 2026-08-20 (N14, and see the scope exception in Section 2) |
+| Verification | `flutter analyze` clean · all 86 tests passing across 10 files · `flutter build web --release` succeeds |
 
 ---
 
@@ -137,6 +137,8 @@ Each of these needs a new entry in the paper's scope section (§1.4.1) and proba
 | N11 | Export results as PDF | "Export as PDF" on the Defense Results screen and the Paper Checker report, producing a branded A4 document with the score, metric bars, rubric breakdown, formatting table and a disclaimer | Students can save or hand a real document to their adviser. Uses the `pdf` + `printing` packages already in the project for the admin credential sheet, so no dependency was added, and it prints only data the screen already shows | `lib/services/report_printer.dart` | New subsection under §B.3.7 and §B.5 | ✅ Phase 3 |
 | N12 | Split login layout | Branded panel + form side by side above 1024 px; compact lockup above the form on phones | The login screen was a 420 px column on every screen size. First impression of the system | `lib/screens/login_page.dart` | §4.4.1 (new) | ✅ Phase 3 |
 | N13 | Live countdown ring | The defense timer is a ring that drains with the clock, shifts calm → warning → danger, and breathes in the last 30 seconds | §B.3.1 promises a timed question display "to feel the pressure"; a static text pill did not deliver that | `lib/screens/title_defense_screen.dart` | §B.3.1 (existing) | ✅ Phase 3 |
+| N14 | Offline Capstone Manual | The app boots and the Capstone Manual is fully readable — search included — with no internet connection, once the student has opened Appstone online at least once on that device | The manual is the one module that needs no server: its text is compiled into the bundle. It was nevertheless unreachable offline, because the engine fetched its renderer from a Google CDN and the startup path resolved the session from Firestore. DCT students on intermittent campus wifi or out of mobile data lost access to the reference document for no technical reason | `web/flutter_bootstrap.js`, `lib/services/session_cache.dart`, `lib/services/connectivity*.dart`, `lib/screens/auth_gate.dart` | §1.4.2.J (Web Software Limitations) and §B.1 | ✅ |
+| N15 | Offline notice | An advisory strip on Home and on the Capstone Manual, shown only while the browser reports no connection, naming what still works and what does not. Never blocks anything | Without it, an offline student meets the AI modules' failure messages one at a time and concludes the app is broken | `lib/widgets/offline_notice.dart` | §B (Student Dashboard), §B.1 | ✅ |
 
 ### Explicitly cut from scope
 
@@ -149,6 +151,12 @@ Decided 2026-08-17. These were proposed, considered, and **deliberately not buil
 | Capstone Manual bookmarks + continue reading | New persisted user data and new interactions — would change the §B.1 activity diagram |
 
 **Scope rule for the remainder of this work:** UI, layout, responsiveness, theming, motion, states, and defect fixes only. Nothing that changes what the system *can do* — only how it looks and feels doing it.
+
+**Exception granted 2026-08-20 — offline access to the Capstone Manual (N14).** Requested directly, and it does cross the scope rule: the system can now do something it could not before. Recorded here rather than waved through, because the paper needs it in two places.
+
+What it does *not* change: no new screen, no new input, no new output, no new persisted user data, and no new cross-module data flow. The manual's content, the rubric it renders, and every Firestore collection and document shape are untouched. The only new stored value is a local mirror of the student's own name, group and plan flag — values the server already returned at sign-in — kept in SharedPreferences beside the `studentId` and `groupId` that were already there.
+
+**Diagram impact:** the §B.1 (Capstone Manual) activity diagram gains no new activity, but its precondition changes from "student is authenticated against Firestore" to "student has a saved session on this device". The §A authentication sequence diagram gains one alternative branch: a Firestore read that fails for lack of a connection restores the saved session instead of ending it. Nothing else moves.
 
 ---
 
@@ -193,6 +201,10 @@ Useful evidence for the paper's testing / QA discussion.
 | C16 | Icons mixed the outlined, filled and rounded Material sets arbitrarily | Standardised on the rounded set, matching the type and the logo's rounded corners (~140 icons changed) | ✅ |
 | C17 | Toggling the theme swapped every colour instantly, as a hard flash | Cross-fades over 400 ms via `AnimatedTheme`, respecting reduced-motion | ✅ |
 | C18 | Opening a module from a Home card pushed it **on top of** the navigation shell, so the bottom bar disappeared and no back button was drawn — the module became a dead end escapable only by the browser's back gesture. Opening the same module from its tab kept the bar. One screen, two different behaviours | Home cards and the progress tiles now switch the shell destination instead of pushing, so a card and its tab land in exactly the same place with the navigation bar intact. Screens that genuinely are pushed (Title Generator, defense session, results, the history screens, project context) draw a back button automatically, because Flutter shows one whenever the route can pop | ✅ |
+| C19 | **Log out** signed the user out on the tap. It sits in the account menu in the app bar on every student screen, and directly under the page entries in the admin nav | Both now ask for confirmation first. The student version says what it costs: signing back in needs their Student ID and password, and it stops the app working offline on that device | ✅ |
+| C20 | Opening the app with no connection either hung on the startup spinner forever or signed the user out and showed them the raw Firebase exception text | A Firestore failure at startup is now classified: a refusal (`permission-denied`, deactivated admin, unknown account) still ends the session, while a transport failure (`unavailable`, `deadline-exceeded`, timeout) restores the saved session and opens Home. Nobody is signed out for being offline — offline is precisely when they cannot sign back in | ✅ |
+| C21 | The web build fetched CanvasKit — the renderer the app cannot start without — from `gstatic.com`. Cross-origin, so `flutter_service_worker.js` could not cache it, and the cached bundle was useless without a network | `web/flutter_bootstrap.js` pins `canvasKitBaseUrl` to the local `canvaskit/` folder that `flutter build web` already ships and already lists in the service worker's resource map. First online load caches it; every later load works offline. Equivalent to `--no-web-resources-cdn`, but a property of the app rather than a flag someone must remember | ✅ |
+| C22 | In the Title Generator, picking a chip from a field unrelated to the current selection (the faded ones pushed to the back of each row) just added it. A mis-tap and a deliberate cross-field choice were indistinguishable, and the student only found out at **Generate**, when the titles came back trying to serve two unrelated fields at once | The chip now asks first, naming both sides of the mismatch — "Your picks so far sit in Agriculture. ‘Healthcare Workers’ belongs to Healthcare" — and warning that the ideas will be vaguer. **Add anyway** proceeds. Nothing is blocked, no chip was removed, and the ordering and fading behaviour is unchanged; un-picking and field-agnostic chips are never questioned | ✅ |
 | D6 | `import_students_page.dart:174` | Button `Row` with no `Wrap` — overflows in the narrow admin drawer layout | ⬜ |
 | D7 | `audit_log_page.dart:126`, `session_history_screen.dart:319` | `Row(mainAxisSize.min)` containing an unbounded `Text` placed inside a `Wrap` — long emails overflow with no ellipsis | ⬜ |
 | D8 | `title_generator_screen.dart:541` | Hand-rolled chip wrap cannot break a chip wider than the available width — clips at large text scale on narrow screens | ⬜ |
@@ -221,7 +233,7 @@ State these confidently in the paper and in defense. The frontend overhaul did *
 - **The role model** — owner / admin / student, resolved by Firestore read, no custom claims.
 - **The ownership transfer flow** — email-link proof to the current owner's own inbox, explicit confirmation, atomic two-document role swap.
 - **The workflow scheduling algorithm** — weight-proportional day allocation with a 1-day floor and largest-remainder distribution (`models/workflow_plan.dart`).
-- **All 9 test files** — still passing.
+- **All 9 original test files** — still passing, including the four chip-overflow tests in `title_generator_screen_test.dart` (seven more were added there for C22). A tenth file, `offline_session_test.dart`, was added with N14; it is pure unit work (error classification + SharedPreferences) and needs no emulator or network, like the rest.
 
 ---
 

@@ -8,6 +8,7 @@ import '../services/admin_repository.dart';
 import '../services/functions_service.dart';
 import '../services/paper_check_history_service.dart';
 import '../services/practice_history_service.dart';
+import '../services/session_cache.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
@@ -18,10 +19,10 @@ import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/charts/progress_ring.dart';
 import '../widgets/icon_tile.dart';
+import '../widgets/offline_notice.dart';
 import '../widgets/premium_upsell.dart';
 import '../widgets/states/app_states.dart';
 import '../widgets/states/skeleton.dart';
-import 'auth_gate.dart';
 import 'login_page.dart';
 
 /// The student's app after login.
@@ -238,6 +239,16 @@ class _HomeViewState extends State<HomeView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      // Above the hero, and only while there is no connection:
+                      // the AI modules below will fail without one, so say so
+                      // up front rather than after a failed request.
+                      const OfflineNotice(
+                        message:
+                            'The Capstone Manual is saved on this device and '
+                            'works as normal. The AI features need a '
+                            'connection and will not run until you are back '
+                            'online.',
+                      ),
                       StaggeredEntrance(index: 0, child: _buildHero()),
                       AppSpacing.vXl,
                       if (widget.isPremium) ...<Widget>[
@@ -622,10 +633,25 @@ class _HomeViewState extends State<HomeView> {
   // ---------------------------------------------------------------------------
 
   Future<void> _logout() async {
+    // Confirmed first: the account menu sits in the app bar on every screen, so
+    // a mis-tap used to end the session outright - and a student who signed in
+    // with an admin-issued password may not remember it well enough to get back
+    // in. It also clears the saved session, which is what makes the Capstone
+    // Manual readable offline, so this is not a cost-free tap.
+    final confirmed = await showConfirmDialog(
+      context: context,
+      title: 'Log out?',
+      message:
+          'You will need your Student ID and password to sign back in, and '
+          'Appstone will stop working offline on this device until you do.',
+      confirmLabel: 'Log out',
+      icon: Icons.logout_rounded,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
     await AdminRepository().signOut();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(studentIdPrefsKey);
-    await prefs.remove(groupIdPrefsKey);
+    await clearStudentSession();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil<void>(
       context,

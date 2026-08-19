@@ -51,6 +51,26 @@ String friendlyErrorMessage(Object error) {
   return 'Something went wrong. Please try again.';
 }
 
+/// True when [error] is a connection problem rather than a refusal.
+///
+/// The distinction matters at sign-in: a `permission-denied` means this account
+/// is not allowed in and should be signed out, while an `unavailable` means we
+/// could not ask. Signing someone out on the second one is a trap - they are
+/// offline, so they cannot sign back in.
+bool isOfflineError(Object error) {
+  if (error is SocketException) return true;
+  if (error is TimeoutException) return true;
+  if (error is FirebaseAuthException) {
+    return error.code == 'network-request-failed';
+  }
+  if (error is FirebaseException) {
+    return error.code == 'unavailable' ||
+        error.code == 'deadline-exceeded' ||
+        error.code == 'network-request-failed';
+  }
+  return _looksOffline(error.toString());
+}
+
 const String _offline =
     'You appear to be offline. Check your internet connection and try again.';
 

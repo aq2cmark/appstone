@@ -7,6 +7,7 @@ import '../theme/app_typography.dart';
 import '../theme/reading_scale.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/offline_notice.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_checker_service.dart'
     show manuscriptRubric, rubricMaxScore;
@@ -78,6 +79,15 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 16),
+                // Every word below is compiled into the app bundle, so this
+                // screen is complete with no connection. Saying so turns a
+                // moment students would otherwise read as "the app is broken"
+                // into the one place they can still work.
+                const OfflineNotice(
+                  message:
+                      'The whole manual is saved on this device, so search and '
+                      'every topic still work.',
+                ),
                 if (results == null) ...[
                   const SectionLabel('CONTENTS'),
                   const SizedBox(height: 8),
