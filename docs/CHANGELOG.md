@@ -184,3 +184,13 @@ The audit had only tested text-on-surface pairs, so it missed **coloured slabs**
 
 ### Safety
 No Cloud Function, repository method, or registration/import logic was touched — only presentation. One regression was caught and reverted mid-work: a bulk `perl` substitution damaged `admin_portal_page.dart` (118 analyzer errors) by deleting `style: const TextStyle(` lines; restored from backup and redone with precise edits.
+
+### Admin parity pass (bringing admin up to the student screens)
+- ✅ **Defect D2 finally fixed** — `print_options_dialog` forced `width: 420` inside an `AlertDialog`, which reserves 40px inset each side, so it overflowed horizontally on *every* phone. Now takes the lesser of 420 and the space available. Its list also had a fixed 340px height cap regardless of screen height, pushing the action buttons off a short landscape phone; now proportional.
+- ✅ **Content measure** — the dashboard stretched edge-to-edge on a 1920px monitor; now capped at `AppContentWidth.max` like the student screens.
+- ✅ **Animated stat counters** (`CountUpText`), matching the student score dials.
+- ✅ **`AppEmptyView` for "no groups yet"**, with a create-first-group action, replacing a plain text card.
+- ✅ **Staggered entrance** on the dashboard — coarse (actions / stats / search / whole group list) so searching doesn't replay a growing delay chain.
+- ✅ **Import errors recoloured** from `brand` to `danger` — an error pill in the brand colour read as decorative rather than a problem.
+
+**Remaining admin gaps (deliberate, not oversights):** `import_students_page` and `print_options_dialog` have no stagger or skeleton — the import page's states are driven by user action rather than a load, and the dialog is transient. The 11 raw `AlertDialog`s are scroll-safe where it mattered (the two multi-field ones were wrapped) but have not been migrated to `AppDialog` wholesale.

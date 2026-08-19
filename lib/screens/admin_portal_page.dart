@@ -14,6 +14,7 @@ import '../widgets/states/app_states.dart';
 import '../widgets/states/skeleton.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../widgets/credential_value.dart';
+import '../widgets/app_motion_widgets.dart';
 import '../widgets/icon_tile.dart';
 import 'admin_management_page.dart';
 import 'audit_log_page.dart';
@@ -417,7 +418,10 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           maxWidth: AppContentWidth.max,
           child: ListView(
           padding: EdgeInsets.all(pagePadding),
-          children: [
+          // Coarse stagger: the action row, the stat row, the search field,
+          // then the whole group list as one step. Animating each group card
+          // would replay a growing delay chain every time the search changes.
+          children: StaggeredEntrance.list(<Widget>[
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -444,21 +448,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               children: [
                 statCard(
                   'Total Groups',
-                  groups.length.toString(),
+                  groups.length,
                   Icons.groups_rounded,
                   colors.brand,
                   statWidth,
                 ),
                 statCard(
                   'Total Students',
-                  totalStudents.toString(),
+                  totalStudents,
                   Icons.person_add_rounded,
                   colors.premium,
                   statWidth,
                 ),
                 statCard(
                   'Premium Groups',
-                  premiumGroups.toString(),
+                  premiumGroups,
                   Icons.workspace_premium_rounded,
                   colors.brandStrong,
                   statWidth,
@@ -469,10 +473,18 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             _buildSearchField(),
             const SizedBox(height: 20),
             if (groups.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('No groups yet. Click Create New Group first.'),
+              AppEmptyView(
+                icon: Icons.groups_rounded,
+                accent: colors.admin,
+                title: 'No capstone groups yet',
+                body: 'Create a group first, then register or import the '
+                    'students who belong to it. Each group holds up to five '
+                    'members.',
+                action: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: colors.admin),
+                  onPressed: createGroup,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Create the first group'),
                 ),
               )
             else if (_matchingGroups(groups).isEmpty)
@@ -488,9 +500,13 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
             // The stat cards above deliberately keep counting the *whole*
             // roster while a search is active - they are a summary of the
             // department, not of the current filter.
-            for (final group in _matchingGroups(groups))
-              buildGroupCard(group, groups),
-          ],
+            Column(
+              children: [
+                for (final group in _matchingGroups(groups))
+                  buildGroupCard(group, groups),
+              ],
+            ),
+          ]),
           ),
         );
       },
@@ -499,7 +515,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
 
   Widget statCard(
     String label,
-    String value,
+    int value,
     IconData icon,
     Color color,
     double width,
@@ -524,11 +540,12 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                       style: TextStyle(color: colors.textSecondary),
                     ),
                     const SizedBox(height: 28),
-                    Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                    // Counts up rather than appearing, matching the student
+                    // side's score dials and progress figures.
+                    CountUpText(
+                      value: value,
+                      style: AppTypography.displayMedium.copyWith(
+                        color: colors.textPrimary,
                       ),
                     ),
                   ],

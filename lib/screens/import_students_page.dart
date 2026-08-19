@@ -133,7 +133,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
               children: [
                 _pill('${preview.validCount} valid', colors.success),
                 if (preview.errorCount > 0)
-                  _pill('${preview.errorCount} with errors', colors.brand),
+                  _pill('${preview.errorCount} with errors', colors.danger),
                 if (preview.groupsToCreate.isNotEmpty)
                   _pill(
                     'Creates: ${preview.groupsToCreate.join(', ')}',
