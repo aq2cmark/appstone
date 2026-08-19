@@ -45,8 +45,191 @@
 
   <title>Appstone</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    /*
+      Boot splash.
+
+      This bundle is ~26 MB, so on campus wifi the browser would otherwise show
+      a blank white page for several seconds before Flutter paints anything.
+      The splash is plain HTML/CSS so it appears on the very first paint, long
+      before main.dart.js has parsed.
+
+      It is drawn in the brand maroon in both colour schemes on purpose: it is
+      a fixed brand surface, and matching it to `theme_color` means the browser
+      chrome and the page agree while the app loads.
+    */
+    html, body {
+      margin: 0;
+      padding: 0;
+      /* Maroon only while the splash is up. Left in place it would show
+         through wherever Flutter's canvas does not paint - most visibly as a
+         maroon flash when the page is over-scrolled on a phone - so the
+         dismiss handler clears it once the app has painted. */
+      background-color: #8B1A1A;
+    }
+
+    html.app-booted, html.app-booted body {
+      background-color: transparent;
+    }
+
+    #app-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      background: #8B1A1A;
+      /* Safe areas so the mark stays centred on notched phones. */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+      opacity: 1;
+      transition: opacity 320ms ease-out;
+    }
+
+    /* Set once Flutter has painted its first frame. */
+    #app-splash.is-gone {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #app-splash svg {
+      width: 88px;
+      height: 88px;
+      /* Settles toward the app-bar mark as the splash fades, so boot reads as
+         one continuous motion instead of a cut between two screens. It is an
+         approximation - the handoff is HTML to Flutter, so a true shared
+         element is not possible - but it lands in roughly the right place. */
+      transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #app-splash.is-gone svg {
+      transform: translateY(-14vh) scale(0.34);
+    }
+
+    #app-splash.is-gone #app-splash-name,
+    #app-splash.is-gone #app-splash-bar {
+      opacity: 0;
+      transition: opacity 160ms ease-out;
+    }
+
+    /* The mark draws itself on. Each path is dashed to its own length, then
+       the offset animates to zero. Lengths are measured in the 512-unit
+       viewBox: the two legs of the A, then the crossbar. */
+    #app-splash svg path {
+      stroke-dasharray: var(--len);
+      stroke-dashoffset: var(--len);
+      animation: app-splash-draw 900ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    #app-splash svg path:nth-child(1) { --len: 310; animation-delay: 60ms; }
+    #app-splash svg path:nth-child(2) { --len: 280; animation-delay: 200ms; }
+    #app-splash svg path:nth-child(3) { --len: 132; animation-delay: 480ms; }
+
+    @keyframes app-splash-draw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    #app-splash-name {
+      font-family: "Plus Jakarta Sans", "Segoe UI", Roboto, "Helvetica Neue",
+                   Arial, sans-serif;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      color: #FFFFFF;
+    }
+
+    #app-splash-bar {
+      width: 128px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      overflow: hidden;
+    }
+
+    #app-splash-bar span {
+      display: block;
+      width: 40%;
+      height: 100%;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.9);
+      animation: app-splash-slide 1.15s ease-in-out infinite;
+    }
+
+    @keyframes app-splash-slide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(320%); }
+    }
+
+    /* Readers who ask for less motion get a steady bar instead of a moving one,
+       and the mark simply appears rather than drawing or flying. */
+    @media (prefers-reduced-motion: reduce) {
+      #app-splash-bar span {
+        animation: none;
+        width: 100%;
+        opacity: 0.6;
+      }
+      #app-splash { transition: none; }
+      #app-splash svg { transition: none; }
+      #app-splash.is-gone svg { transform: none; }
+      #app-splash svg path {
+        animation: none;
+        stroke-dashoffset: 0;
+      }
+    }
+  </style>
 </head>
 <body>
+  <div id="app-splash">
+    <!--
+      The Appstone mark, drawn from the same 512x512 geometry as
+      assets/branding/appstone_logo.svg and the in-app CustomPainter, so the
+      splash and the app show an identical logo. No tile here - the splash
+      background already supplies the maroon.
+    -->
+    <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#FFFFFF" stroke-width="44"
+         stroke-linecap="round" stroke-linejoin="round">
+        <path d="M236 132 H276 L360 388" />
+        <path d="M236 132 L152 388" />
+        <path d="M190 300 H322" />
+      </g>
+    </svg>
+    <div id="app-splash-name">Appstone</div>
+    <div id="app-splash-bar"><span></span></div>
+  </div>
+
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    (function () {
+      var splash = document.getElementById('app-splash');
+      if (!splash) return;
+
+      var removed = false;
+      function dismiss() {
+        if (removed) return;
+        removed = true;
+        splash.classList.add('is-gone');
+        // Hand the page background back to Flutter.
+        document.documentElement.classList.add('app-booted');
+        // Wait out the fade before detaching, so the app is not revealed by a
+        // hard cut.
+        window.setTimeout(function () {
+          if (splash.parentNode) splash.parentNode.removeChild(splash);
+        }, 400);
+      }
+
+      // Flutter fires this on the window once it has painted its first frame.
+      window.addEventListener('flutter-first-frame', dismiss);
+
+      // Failsafe: if that event never arrives (an engine error, a blocked
+      // asset), the splash must not trap the user on a maroon screen forever.
+      window.setTimeout(dismiss, 20000);
+    })();
+  </script>
 </body>
 </html>

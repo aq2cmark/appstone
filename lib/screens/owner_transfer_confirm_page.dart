@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/admin_repository.dart';
 import 'admin_portal_page.dart';
@@ -59,10 +60,13 @@ class _OwnerTransferConfirmPageState extends State<OwnerTransferConfirmPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
       appBar: AppBar(
                 title: const Text('Confirm Ownership Transfer'),
         actions: const <Widget>[ThemeToggleButton()],
+        bottom: appBarAccent(colors.brand),
       ),
       body: Center(
         child: SingleChildScrollView(

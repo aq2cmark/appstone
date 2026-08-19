@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/docx_layout_checker.dart';
 import '../services/paper_check_controller.dart';
 import '../services/paper_checker_service.dart';
-import '../services/report_printer.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
@@ -35,7 +34,6 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
 
   // The file the user has picked but not yet checked (screen-local).
   PlatformFile? _selectedFile;
-  bool _printing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -44,26 +42,12 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, _) {
-        final review = _controller.review;
-
         return AppScaffold(
           title: 'Paper Checker',
           subtitle: 'Graded against the manuscript rubric',
           accent: colors.modulePaper,
           maxContentWidth: AppContentWidth.wide,
           actions: <Widget>[
-            if (review != null)
-              IconButton(
-                tooltip: 'Export as PDF',
-                onPressed: _printing ? null : _exportPdf,
-                icon: _printing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.picture_as_pdf_outlined),
-              ),
             IconButton(
               tooltip: 'Check history',
               onPressed: () =>
@@ -238,12 +222,6 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
               ],
             ),
           ),
-        ),
-        AppSpacing.vSm,
-        OutlinedButton.icon(
-          onPressed: _printing ? null : _exportPdf,
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Export report as PDF'),
         ),
         AppSpacing.vLg,
         Text(
@@ -517,14 +495,11 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: AppSpacing.sm),
-          child: ClipRRect(
-            borderRadius: AppRadius.smAll,
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 6,
-              color: tone,
-              backgroundColor: colors.surfaceSunken,
-            ),
+          child: AnimatedProgressBar(
+            value: ratio,
+            minHeight: 6,
+            color: tone,
+            backgroundColor: colors.surfaceSunken,
           ),
         ),
         trailing: Container(
@@ -649,24 +624,6 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       groupId: prefs.getString(groupIdPrefsKey),
       studentId: prefs.getString(studentIdPrefsKey),
     );
-  }
-
-  Future<void> _exportPdf() async {
-    final review = _controller.review;
-    if (review == null) return;
-
-    setState(() => _printing = true);
-    try {
-      await ReportPrinter.printPaperReview(
-        review: review,
-        fileName: _controller.fileName ?? 'Manuscript',
-        layout: _controller.layout,
-      );
-    } catch (error) {
-      if (mounted) showErrorSnack(context, error);
-    } finally {
-      if (mounted) setState(() => _printing = false);
-    }
   }
 
   Color _scoreColor(double ratio) {

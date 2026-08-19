@@ -4,6 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../models/workflow_plan.dart';
 import '../services/document_text_extractor.dart';
@@ -70,9 +74,12 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
             appBar: AppBar(
                 title: const Text('AI Workflow'),
+        bottom: appBarAccent(colors.moduleWorkflow),
         actions: [
           if (_plan != null)
             IconButton(
@@ -90,7 +97,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               children: [
                 Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
+                    constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
                     child: _plan == null ? _buildSetup() : _buildPlan(_plan!),
                   ),
                 ),
@@ -105,11 +112,11 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
     final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
+      children: StaggeredEntrance.list(<Widget>[
+        Text(
           'Upload your paper and tell us how long you have. The AI builds a '
           'chapter-by-chapter timeline you can track and adjust.',
-          style: TextStyle(fontSize: 15),
+          style: AppTypography.bodyLarge,
         ),
         const SizedBox(height: 16),
         Card(
@@ -206,7 +213,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
             _generating ? 'Building timeline...' : 'Generate Timeline',
           ),
         ),
-      ],
+      ]),
     );
   }
 
@@ -220,17 +227,27 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+      // Three coarse steps (status, the whole phase list, the restart button)
+      // rather than one per phase - a 15-phase Final Defense plan would
+      // otherwise take a full second just to finish arriving.
+      children: StaggeredEntrance.list(<Widget>[
         _buildStatusCard(plan, daysLeft, allDone),
-        const SizedBox(height: 16),
-        for (final item in schedule) _buildPhaseCard(plan, item),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: _confirmStartOver,
-          icon: const Icon(Icons.restart_alt_rounded, size: 18),
-          label: const Text('Start a new plan'),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 16),
+            for (final item in schedule) _buildPhaseCard(plan, item),
+          ],
         ),
-      ],
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: TextButton.icon(
+            onPressed: _confirmStartOver,
+            icon: const Icon(Icons.restart_alt_rounded, size: 18),
+            label: const Text('Start a new plan'),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -323,14 +340,11 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: plan.progress,
-                minHeight: 10,
-                backgroundColor: colors.surfaceSunken,
-                color: colors.brand,
-              ),
+            AnimatedProgressBar(
+              value: plan.progress,
+              minHeight: 10,
+              backgroundColor: colors.surfaceSunken,
+              color: colors.brand,
             ),
             const SizedBox(height: 16),
             Container(
@@ -488,7 +502,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
           const SizedBox(height: 8),
           SelectableText(
             tips,
-            style: const TextStyle(height: 1.5, fontSize: 14.5),
+            style: AppTypography.bodyMedium.copyWith(height: 1.5),
           ),
         ],
       ),

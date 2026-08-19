@@ -2,84 +2,222 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/states/app_states.dart';
+import '../widgets/states/skeleton.dart';
 import '../services/admin_repository.dart';
 
-// Owner-only page showing a newest-first history of admin actions (who did
-// what, and when) recorded by AdminRepository into the append-only
-// `audit_logs` collection. It mirrors the AdminManagementPage layout: a live
-// StreamBuilder over the repository, an intro card, then one row per entry.
-class AuditLogPage extends StatelessWidget {
+/// Owner-only history of admin actions, recorded by AdminRepository into the
+/// append-only `audit_logs` collection.
+///
+/// Entries arrive newest-first. They are grouped under day headings and can be
+/// narrowed by category, because a flat list of up to 200 rows made "what
+/// changed this week" almost impossible to answer by eye.
+class AuditLogPage extends StatefulWidget {
   const AuditLogPage({super.key, required this.repo});
 
   final AdminRepository repo;
 
-  // Formats an entry timestamp like "Jul 9, 2026 · 2:41 PM". Entries whose
-  // server timestamp hasn't resolved yet (a brief moment right after the
-  // action) show a placeholder instead.
-  static final _dateFormat = DateFormat('MMM d, y · h:mm a');
+  @override
+  State<AuditLogPage> createState() => _AuditLogPageState();
+}
+
+class _AuditLogPageState extends State<AuditLogPage> {
+  /// Formats an entry time like "2:41 PM". The date lives in the day heading,
+  /// so repeating it on every row would be noise.
+  static final _timeFormat = DateFormat('h:mm a');
+  static final _dayFormat = DateFormat('EEEE, MMM d, y');
+
+  /// null = every category.
+  String? _category;
+
+  static const _categories = <String, String>{
+    'group': 'Groups',
+    'student': 'Students',
+    'admin': 'Admins',
+  };
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+
     return StreamBuilder<List<AuditLogEntry>>(
-      stream: repo.auditLogStream(),
+      stream: widget.repo.auditLogStream(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return AppErrorView(
+            error: snapshot.error,
+            title: 'Could not load the activity log',
+            onRetry: () => setState(() {}),
+          );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final entries = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Activity log',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'A record of admin actions - group and student changes, '
-                      'password resets, and admin access changes - with who '
-                      'made each change and when. Newest actions appear first. '
-                      'Entries cannot be edited or removed.',
-                      style: TextStyle(color: colors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
+          return Skeleton(
+            child: ListView(
+              padding: EdgeInsets.all(AppSpacing.xl),
+              children: const [
+                SkeletonCard(lines: 2, showTile: false),
+                SizedBox(height: AppSpacing.lg),
+                SkeletonList(count: 6, lines: 2),
+              ],
             ),
-            const SizedBox(height: 16),
-            if (entries.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text('No admin activity recorded yet.'),
-                ),
+          );
+        }
+
+        final all = snapshot.data!;
+        final entries = _category == null
+            ? all
+            : all.where((e) => e.category == _category).toList();
+
+        return ListView(
+          padding: EdgeInsets.all(AppSpacing.xl),
+          children: [
+            _buildIntro(colors, all),
+            AppSpacing.vLg,
+            _buildFilters(colors, all),
+            AppSpacing.vLg,
+            if (all.isEmpty)
+              AppEmptyView(
+                icon: Icons.history_rounded,
+                accent: colors.admin,
+                title: 'No activity yet',
+                body: 'Group and student changes, password resets and admin '
+                    'access changes will appear here as they happen.',
+              )
+            else if (entries.isEmpty)
+              AppEmptyView(
+                icon: Icons.filter_alt_off_rounded,
+                accent: colors.admin,
+                title: 'Nothing in this category',
+                body: 'No ${_categories[_category]?.toLowerCase()} activity has '
+                    'been recorded yet.',
               )
             else
-              for (final entry in entries) _buildEntryCard(colors, entry),
+              ..._buildGroupedEntries(colors, entries),
           ],
         );
       },
     );
   }
 
+  Widget _buildIntro(AppColors colors, List<AuditLogEntry> all) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.shield_rounded, color: colors.admin),
+            AppSpacing.hLg,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Activity log',
+                    style: AppTypography.titleMedium.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  AppSpacing.vXs,
+                  Text(
+                    'Who changed what, and when. Entries are append-only - they '
+                    'cannot be edited or removed, including by an owner.',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilters(AppColors colors, List<AuditLogEntry> all) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: [
+        ChoiceChip(
+          label: Text('All (${all.length})'),
+          selected: _category == null,
+          onSelected: (_) => setState(() => _category = null),
+        ),
+        for (final entry in _categories.entries)
+          ChoiceChip(
+            label: Text(
+              '${entry.value} '
+              '(${all.where((e) => e.category == entry.key).length})',
+            ),
+            selected: _category == entry.key,
+            onSelected: (_) => setState(() => _category = entry.key),
+          ),
+      ],
+    );
+  }
+
+  /// Entries under "Today" / "Yesterday" / full-date headings.
+  ///
+  /// The stream is already newest-first, so a single pass preserves order
+  /// without re-sorting.
+  List<Widget> _buildGroupedEntries(
+    AppColors colors,
+    List<AuditLogEntry> entries,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final widgets = <Widget>[];
+    String? currentHeading;
+
+    for (final entry in entries) {
+      final at = entry.createdAt?.toLocal();
+      final String heading;
+      if (at == null) {
+        // A server timestamp that has not resolved yet - the action happened
+        // moments ago.
+        heading = 'Just now';
+      } else {
+        final day = DateTime(at.year, at.month, at.day);
+        final diff = today.difference(day).inDays;
+        heading = diff == 0
+            ? 'Today'
+            : diff == 1
+                ? 'Yesterday'
+                : _dayFormat.format(at);
+      }
+
+      if (heading != currentHeading) {
+        currentHeading = heading;
+        widgets.add(
+          Padding(
+            padding: EdgeInsets.only(
+              top: widgets.isEmpty ? 0 : AppSpacing.lg,
+              bottom: AppSpacing.sm,
+            ),
+            child: Text(
+              heading.toUpperCase(),
+              style: AppTypography.eyebrow.copyWith(color: colors.admin),
+            ),
+          ),
+        );
+      }
+
+      widgets.add(_buildEntryCard(colors, entry));
+    }
+
+    return widgets;
+  }
+
   Widget _buildEntryCard(AppColors colors, AuditLogEntry entry) {
     final (icon, color) = _visualsFor(colors, entry.category);
+    // Time only - the date is carried by the day heading above this row.
     final when = entry.createdAt == null
         ? 'Just now'
-        : _dateFormat.format(entry.createdAt!.toLocal());
+        : _timeFormat.format(entry.createdAt!.toLocal());
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -100,10 +238,7 @@ class AuditLogPage extends StatelessWidget {
                 children: [
                   Text(
                     entry.description,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                    style: AppTypography.titleMedium,
                   ),
                   const SizedBox(height: 6),
                   Wrap(
@@ -132,7 +267,7 @@ class AuditLogPage extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           text,
-          style: TextStyle(color: colors.textSecondary, fontSize: 13),
+          style: AppTypography.bodySmall.copyWith(color: colors.textSecondary),
         ),
       ],
     );

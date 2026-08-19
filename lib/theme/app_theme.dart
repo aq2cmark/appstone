@@ -59,6 +59,12 @@ abstract final class AppTheme {
       useMaterial3: true,
       brightness: c.brightness,
       colorScheme: colorScheme,
+
+      // The palette travels with the theme so `AppColors.of(context)` gets the
+      // interpolated value during a light/dark crossfade rather than snapping
+      // when brightness flips.
+      extensions: <ThemeExtension<dynamic>>[c],
+
       scaffoldBackgroundColor: c.background,
       canvasColor: c.background,
       textTheme: textTheme,
@@ -86,13 +92,17 @@ abstract final class AppTheme {
 
       appBarTheme: AppBarTheme(
         backgroundColor: c.background,
-        surfaceTintColor: Colors.transparent,
         foregroundColor: c.textPrimary,
         elevation: AppElevation.flat,
-        scrolledUnderElevation: AppElevation.flat,
-        // Scrolled-under tint: the neutral bar gains a hairline of separation
-        // once content passes beneath it, so it reads as a layer rather than
-        // floating text. Colour, not elevation - shadows are invisible on dark.
+
+        // Scrolled-under treatment. The bar is flat and the same colour as the
+        // page, so without this there is nothing to separate it from content
+        // passing beneath. Material tints the bar by the surface tint in
+        // proportion to `scrolledUnderElevation`, which gives a faint brand
+        // wash rather than a shadow - deliberate, because shadows are close to
+        // invisible against a dark background.
+        surfaceTintColor: c.brand,
+        scrolledUnderElevation: 3,
         shadowColor: Colors.transparent,
         centerTitle: false,
         titleTextStyle: AppTypography.headlineSmall.copyWith(

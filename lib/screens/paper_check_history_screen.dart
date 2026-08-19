@@ -3,6 +3,10 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
+import '../theme/app_spacing.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_check_history_service.dart';
 import 'auth_gate.dart';
@@ -99,9 +103,12 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
     return Scaffold(
             appBar: AppBar(
                 title: const Text('Check History'),
+        bottom: appBarAccent(colors.modulePaper),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -113,7 +120,7 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
+          constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
           child: _buildBody(),
         ),
       ),
@@ -161,11 +168,15 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
 
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: [
+      children: StaggeredEntrance.list(<Widget>[
         _buildControls(),
-        const SizedBox(height: 12),
-        for (final record in _visibleRecords) _buildCheckCard(record),
-      ],
+        Column(
+          children: [
+            const SizedBox(height: 12),
+            for (final record in _visibleRecords) _buildCheckCard(record),
+          ],
+        ),
+      ]),
     );
   }
 
@@ -279,10 +290,11 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
               ),
               Text(
                 'SCORE',
-                style: TextStyle(
+                // Was 9px - below the type scale's floor and below what is
+                // comfortably legible. `eyebrow` carries the same tracked,
+                // uppercase intent at a readable size.
+                style: AppTypography.eyebrow.copyWith(
                   color: colors.textSecondary,
-                  fontSize: 9,
-                  letterSpacing: 1,
                 ),
               ),
             ],

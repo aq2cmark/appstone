@@ -10,6 +10,7 @@ import '../services/paper_check_history_service.dart';
 import '../services/practice_history_service.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../widgets/app_dialog.dart';
@@ -187,7 +188,7 @@ class _HomeViewState extends State<HomeView> {
               alignment: Alignment.center,
               child: Text(
                 'A',
-                style: AppTypography.titleSmall.copyWith(color: colors.onBrand),
+                style: AppTypography.titleSmall.copyWith(color: colors.onBrandStrong),
               ),
             ),
             AppSpacing.hSm,
@@ -212,6 +213,12 @@ class _HomeViewState extends State<HomeView> {
       body: SafeArea(
         top: false,
         child: RefreshIndicator(
+          // Branded via the indicator's own colours. Swapping in the Appstone
+          // mark itself would mean replacing RefreshIndicator with a custom
+          // sliver - it takes no child widget - which is a bigger change than
+          // the polish is worth here.
+          color: colors.brand,
+          backgroundColor: colors.surface,
           onRefresh: () async {
             setState(() => _loadingSummary = true);
             await _loadSummary();
@@ -302,7 +309,31 @@ class _HomeViewState extends State<HomeView> {
   // Progress band, continue card, workflow preview
   // ---------------------------------------------------------------------------
 
+  /// Crossfades the skeleton into the real band rather than hard-swapping.
+  ///
+  /// The swap is the most visible moment of the load, and an instant cut is
+  /// what makes it read as unfinished. Keyed on the loading flag so the
+  /// switcher knows the two states are different children.
   Widget _buildProgress() {
+    return AnimatedSwitcher(
+      duration: AppMotion.respect(context, AppMotion.standard),
+      switchInCurve: AppMotion.enter,
+      switchOutCurve: AppMotion.exit,
+      // The skeleton and the loaded band are different heights; without this
+      // the outgoing child is laid out on top of the incoming one and the
+      // section jumps.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.topCenter,
+        children: <Widget>[...previous, if (current != null) current],
+      ),
+      child: KeyedSubtree(
+        key: ValueKey<bool>(_loadingSummary),
+        child: _buildProgressContent(),
+      ),
+    );
+  }
+
+  Widget _buildProgressContent() {
     if (_loadingSummary) {
       return const Skeleton(
         child: Column(

@@ -8,6 +8,7 @@ import '../services/friendly_error.dart';
 import '../services/functions_service.dart';
 import '../theme/app_breakpoints.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../widgets/app_dialog.dart';
@@ -51,7 +52,12 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   final _passwordFocus = FocusNode();
 
-  bool _isLoading = false;
+  /// Drives the submit button's morph: full-width label -> circular spinner
+  /// -> brief check before the screen changes.
+  _SubmitState _submitState = _SubmitState.idle;
+
+  /// Kept as a getter so every existing _isLoading check still reads well.
+  bool get _isLoading => _submitState != _SubmitState.idle;
   // Separate from _isLoading so sending a reset link doesn't make the Sign In
   // button read "Signing in...".
   bool _sendingReset = false;
@@ -299,28 +305,9 @@ class _LoginPageState extends State<LoginPage> {
           AppSpacing.vLg,
           StaggeredEntrance(
             index: next(),
-            child: FilledButton(
-              onPressed: _isLoading ? null : _signIn,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              child: _isLoading
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colors.onBrand,
-                          ),
-                        ),
-                        AppSpacing.hMd,
-                        const Text('Signing in...'),
-                      ],
-                    )
-                  : const Text('Sign in'),
+            child: _MorphingSignInButton(
+              state: _submitState,
+              onPressed: _signIn,
             ),
           ),
           AppSpacing.vXl,
@@ -371,7 +358,7 @@ class _LoginPageState extends State<LoginPage> {
     });
     if (identifier.isEmpty || password.isEmpty) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _submitState = _SubmitState.loading);
 
     try {
       // Everyone - admins and students - now signs in with Firebase Auth.
@@ -450,7 +437,11 @@ class _LoginPageState extends State<LoginPage> {
     } catch (error) {
       if (mounted) setState(() => _formError = friendlyErrorMessage(error));
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      // Leave a success state on screen; it is navigating away. Resetting here
+      // would flash the button back to its label mid-transition.
+      if (mounted && _submitState != _SubmitState.success) {
+        setState(() => _submitState = _SubmitState.idle);
+      }
     }
   }
 
@@ -523,10 +514,39 @@ class _LoginPageState extends State<LoginPage> {
     TextInput.finishAutofillContext();
   }
 
-  void _goTo(Widget page) {
+  /// Shows the success beat, then navigates.
+  Future<void> _goTo(Widget page) async {
+    if (mounted) setState(() => _submitState = _SubmitState.success);
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (!mounted) return;
+    _navigate(page);
+  }
+
+  void _navigate(Widget page) {
+    // A cross-fade rather than the default page push. Login is the one screen
+    // the app *replaces* rather than stacks on, so a slide implies a spatial
+    // relationship that isn't there - and Home's own staggered entrance plays
+    // underneath the fade, which reads as arriving rather than being shoved in.
     Navigator.pushReplacement<void, void>(
       context,
-      MaterialPageRoute<void>(builder: (_) => page),
+      PageRouteBuilder<void>(
+        transitionDuration: AppMotion.respect(context, AppMotion.slow),
+        reverseTransitionDuration: AppMotion.respect(context, AppMotion.quick),
+        pageBuilder: (_, _, _) => page,
+        transitionsBuilder: (context, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: AppMotion.enter,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -544,7 +564,11 @@ class _BrandPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = AppColors.of(context);
+    // This panel is a fixed brand surface, so it uses the LIGHT palette's
+    // maroons in both themes. Following the theme would make the gradient run
+    // to a pale salmon in dark mode, where neither white nor dark ink reaches
+    // AA across the whole sweep.
+    const colors = AppColors.light;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -700,6 +724,81 @@ class _FormBanner extends StatelessWidget {
             icon: const Icon(Icons.close_rounded),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// What the submit button is currently showing.
+enum _SubmitState { idle, loading, success }
+
+/// The Sign in button, which morphs rather than swapping its label.
+///
+/// Signing in is the slowest interaction in the app - Firebase Auth, then a
+/// Firestore role read - so the wait needs to look handled. The button
+/// collapses to a circle while it works and shows a brief check on success, so
+/// the pause reads as progress instead of a frozen screen.
+class _MorphingSignInButton extends StatelessWidget {
+  const _MorphingSignInButton({required this.state, required this.onPressed});
+
+  final _SubmitState state;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final idle = state == _SubmitState.idle;
+    final success = state == _SubmitState.success;
+    final duration = AppMotion.respect(context, AppMotion.standard);
+
+    return Align(
+      // Collapsing to a circle means the button shrinks around its own centre
+      // rather than snapping to one edge.
+      alignment: Alignment.center,
+      child: AnimatedContainer(
+        duration: duration,
+        curve: AppMotion.standardCurve,
+        height: 52,
+        width: idle ? AppContentWidth.form : 52,
+        decoration: BoxDecoration(
+          color: success ? colors.success : colors.brand,
+          borderRadius: BorderRadius.circular(idle ? AppRadius.md : 26),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: idle ? onPressed : null,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: AppMotion.respect(context, AppMotion.quick),
+                child: switch (state) {
+                  _SubmitState.idle => Text(
+                      'Sign in',
+                      key: const ValueKey<String>('idle'),
+                      style: AppTypography.labelLarge.copyWith(
+                        color: colors.onBrand,
+                      ),
+                    ),
+                  _SubmitState.loading => SizedBox(
+                      key: const ValueKey<String>('loading'),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: colors.onBrand,
+                      ),
+                    ),
+                  _SubmitState.success => Icon(
+                      Icons.check_rounded,
+                      key: const ValueKey<String>('success'),
+                      color: colors.onColor,
+                    ),
+                },
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

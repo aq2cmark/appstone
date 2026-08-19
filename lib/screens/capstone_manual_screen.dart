@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_breakpoints.dart';
+import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../theme/reading_scale.dart';
+import '../widgets/app_motion_widgets.dart';
+import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../services/paper_checker_service.dart'
     show manuscriptRubric, rubricMaxScore;
@@ -39,11 +45,15 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
             appBar: AppBar(
                 title: const Text('Capstone Manual'),
         actions: const <Widget>[ThemeToggleButton()],
+        bottom: appBarAccent(colors.moduleManual),
       ),
       body: StudentListBody(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          // Two coarse steps rather than one per card: the section/result list
+          // can be long, and animating every single card would mean waiting
+          // out a growing delay chain each time the search query changes.
+          children: StaggeredEntrance.list(<Widget>[
             TextField(
               controller: _searchController,
               onChanged: (value) => setState(() => _query = value),
@@ -64,44 +74,51 @@ class _CapstoneManualScreenState extends State<CapstoneManualScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 16),
-            if (results == null) ...[
-              const SectionLabel('CONTENTS'),
-              const SizedBox(height: 8),
-              for (final section in _sections)
-                ManualCard(
-                  number: section.number,
-                  title: section.title,
-                  subtitle:
-                      '${section.subtitle} - ${section.topics.length} topics',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ManualTopicListScreen(section: section),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                if (results == null) ...[
+                  const SectionLabel('CONTENTS'),
+                  const SizedBox(height: 8),
+                  for (final section in _sections)
+                    ManualCard(
+                      number: section.number,
+                      title: section.title,
+                      subtitle:
+                          '${section.subtitle} - ${section.topics.length} topics',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ManualTopicListScreen(section: section),
+                        ),
+                      ),
                     ),
+                ] else if (results.isEmpty) ...[
+                  _buildNoResults(query),
+                ] else ...[
+                  SectionLabel(
+                    '${results.length} RESULT${results.length == 1 ? '' : 'S'}',
                   ),
-                ),
-            ] else if (results.isEmpty) ...[
-              _buildNoResults(query),
-            ] else ...[
-              SectionLabel(
-                '${results.length} RESULT${results.length == 1 ? '' : 'S'}',
-              ),
-              const SizedBox(height: 8),
-              for (final result in results)
-                ManualCard(
-                  number: result.section.number,
-                  title: result.topic.title,
-                  subtitle: 'In ${result.section.title} - ${result.topic.subtitle}',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ManualDetailScreen(topic: result.topic),
+                  const SizedBox(height: 8),
+                  for (final result in results)
+                    ManualCard(
+                      number: result.section.number,
+                      title: result.topic.title,
+                      subtitle:
+                          'In ${result.section.title} - ${result.topic.subtitle}',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ManualDetailScreen(topic: result.topic),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-            ],
-          ],
+                ],
+              ],
+            ),
+          ]),
         ),
       ),
     );
@@ -615,64 +632,354 @@ class ManualTopicListScreen extends StatelessWidget {
   }
 }
 
-class ManualDetailScreen extends StatelessWidget {
-  // Shows one topic's content.
+/// One topic's content, laid out for sustained reading rather than scanning.
+///
+/// The manual is the only long-form reading surface in the app, so it gets
+/// treatment the rest of the app does not: a narrower measure (~68 characters,
+/// where the eye reliably finds the next line), larger body text with open
+/// line-height, and a reader-controlled size step.
+///
+/// The previous version rendered each bullet as its own `Card`, so an
+/// eight-point list became eight stacked boxes and roughly doubled the
+/// scrolling on a phone.
+class ManualDetailScreen extends StatefulWidget {
   const ManualDetailScreen({super.key, required this.topic});
 
   final ManualTopic topic;
 
   @override
+  State<ManualDetailScreen> createState() => _ManualDetailScreenState();
+}
+
+class _ManualDetailScreenState extends State<ManualDetailScreen> {
+  final _scrollController = ScrollController();
+
+  /// 0..1 through the topic. Drives the thin bar under the app bar so a long
+  /// section shows how much is left.
+  double _progress = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    // A topic shorter than the viewport never scrolls; showing a 0% bar there
+    // would suggest the reader had not started.
+    final next = max <= 0
+        ? 1.0
+        : (_scrollController.offset / max).clamp(0.0, 1.0);
+    if ((next - _progress).abs() < 0.005) return;
+    setState(() => _progress = next);
+  }
+
+  /// Splits the topic body into paragraphs so the first can lead.
+  List<String> get _paragraphs => widget.topic.content
+      .split(RegExp(r'\n\s*\n'))
+      .map((p) => p.trim())
+      .where((p) => p.isNotEmpty)
+      .toList();
+
+  /// True when an item states an obligation.
+  ///
+  /// Matched on wording the manual already uses - nothing is invented, and
+  /// nothing is downgraded: an item that does not match simply renders as a
+  /// normal bullet. This only changes emphasis, never meaning, which matters
+  /// because the content mirrors an official institutional document.
+  static bool _isRequirement(String item) {
+    final lower = item.toLowerCase();
+    return lower.contains('must ') ||
+        lower.contains('required') ||
+        lower.contains('shall ') ||
+        lower.contains('not allowed') ||
+        lower.contains('mandatory');
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return Scaffold(
-            appBar: AppBar(
-                title: Text(topic.title),
-      ),
-      body: StudentListBody(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Card(
-                            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      topic.title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      topic.subtitle,
-                      style: TextStyle(color: colors.textSecondary),
-                    ),
-                    if (topic.content.isNotEmpty) ...[
-                      const Divider(height: 28),
-                      Text(topic.content, style: const TextStyle(height: 1.4)),
-                    ],
-                  ],
-                ),
+
+    return ValueListenableBuilder<double>(
+      valueListenable: ReadingScale.instance,
+      builder: (context, scale, _) {
+        final paragraphs = _paragraphs;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(widget.topic.title),
+            actions: <Widget>[
+              _ReadingSizeButtons(scale: scale),
+              const ThemeToggleButton(),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(3),
+              child: _ReadingProgressBar(
+                value: _progress,
+                color: colors.moduleManual,
               ),
             ),
-            if (topic.items.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              for (final item in topic.items)
-                Card(
-                                    shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+          ),
+          body: ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              context.pagePadding,
+              AppSpacing.lg,
+              context.pagePadding,
+              AppSpacing.xxxl,
+            ),
+            children: <Widget>[
+              Center(
+                child: ConstrainedBox(
+                  // Narrower than the app's usual reading width: this is the
+                  // one screen people read paragraph after paragraph on.
+                  constraints: const BoxConstraints(maxWidth: 660),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: StaggeredEntrance.list(<Widget>[
+                      _buildHeader(colors, scale),
+                      if (paragraphs.isNotEmpty)
+                        _buildBody(colors, scale, paragraphs),
+                      if (widget.topic.items.isNotEmpty)
+                        _buildItems(colors, scale),
+                    ]),
                   ),
-                  child: ListTile(title: Text(item)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeader(AppColors colors, double scale) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          widget.topic.title,
+          style: AppTypography.headlineLarge.copyWith(
+            color: colors.textPrimary,
+            fontSize: AppTypography.headlineLarge.fontSize! * scale,
+            height: 1.25,
+          ),
+        ),
+        AppSpacing.vSm,
+        Text(
+          widget.topic.subtitle,
+          style: AppTypography.bodyMedium.copyWith(
+            color: colors.moduleManual,
+            fontSize: AppTypography.bodyMedium.fontSize! * scale,
+          ),
+        ),
+        AppSpacing.vLg,
+        Divider(height: 1, color: colors.divider),
+        AppSpacing.vLg,
+      ],
+    );
+  }
+
+  Widget _buildBody(AppColors colors, double scale, List<String> paragraphs) {
+    // 17px base at scale 1.0 with 1.7 line-height. The lead paragraph runs a
+    // little larger to give the eye somewhere to start.
+    final body = AppTypography.bodyLarge.copyWith(
+      color: colors.textPrimary,
+      fontSize: 17 * scale,
+      height: 1.7,
+    );
+    final lead = body.copyWith(
+      fontSize: 19 * scale,
+      height: 1.6,
+      color: colors.textPrimary,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (var i = 0; i < paragraphs.length; i++)
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: i == paragraphs.length - 1 ? 0 : AppSpacing.lg,
+            ),
+            child: Text(paragraphs[i], style: i == 0 ? lead : body),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildItems(AppColors colors, double scale) {
+    final itemStyle = AppTypography.bodyLarge.copyWith(
+      color: colors.textPrimary,
+      fontSize: 16 * scale,
+      height: 1.6,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xl),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              for (var i = 0; i < widget.topic.items.length; i++)
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: i == widget.topic.items.length - 1
+                        ? 0
+                        : AppSpacing.md,
+                  ),
+                  child: _isRequirement(widget.topic.items[i])
+                      ? _RequirementCallout(
+                          text: widget.topic.items[i],
+                          style: itemStyle,
+                        )
+                      : _Bullet(
+                          text: widget.topic.items[i],
+                          style: itemStyle,
+                          color: colors.moduleManual,
+                        ),
                 ),
             ],
-          ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// A- / A+ pair for the manual's body size.
+class _ReadingSizeButtons extends StatelessWidget {
+  const _ReadingSizeButtons({required this.scale});
+
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final reading = ReadingScale.instance;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        IconButton(
+          tooltip: 'Smaller text',
+          onPressed: reading.canDecrease ? reading.decrease : null,
+          icon: const Icon(Icons.text_decrease_rounded),
+        ),
+        IconButton(
+          tooltip: 'Larger text',
+          onPressed: reading.canIncrease ? reading.increase : null,
+          icon: const Icon(Icons.text_increase_rounded),
+        ),
+      ],
+    );
+  }
+}
+
+/// Thin scroll-position bar that doubles as the module accent line.
+class _ReadingProgressBar extends StatelessWidget {
+  const _ReadingProgressBar({required this.value, required this.color});
+
+  final double value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 3,
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            flex: (value * 1000).round().clamp(1, 1000),
+            child: ColoredBox(color: color),
+          ),
+          Expanded(
+            flex: (1000 - value * 1000).round().clamp(1, 1000),
+            child: ColoredBox(color: color.withValues(alpha: 0.18)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Bullet extends StatelessWidget {
+  const _Bullet({
+    required this.text,
+    required this.style,
+    required this.color,
+  });
+
+  final String text;
+  final TextStyle style;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          // Sits on the first line's optical centre; follows the text size so
+          // the marker does not drift as the reader scales up.
+          padding: EdgeInsets.only(top: (style.fontSize ?? 16) * 0.55),
+          child: Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+        ),
+        AppSpacing.hMd,
+        Expanded(child: Text(text, style: style)),
+      ],
+    );
+  }
+}
+
+/// A bullet the manual states as an obligation, given a tinted block so it is
+/// not lost among the surrounding descriptive points.
+class _RequirementCallout extends StatelessWidget {
+  const _RequirementCallout({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.warningTint,
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: colors.tintBorder(colors.warning)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsets.only(top: (style.fontSize ?? 16) * 0.15),
+            child: Icon(
+              Icons.priority_high_rounded,
+              size: (style.fontSize ?? 16) * 1.05,
+              color: colors.warning,
+            ),
+          ),
+          AppSpacing.hMd,
+          Expanded(child: Text(text, style: style)),
+        ],
       ),
     );
   }
@@ -692,7 +999,7 @@ class StudentListBody extends StatelessWidget {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: const BoxConstraints(maxWidth: AppContentWidth.reading),
             child: child,
           ),
         ),
