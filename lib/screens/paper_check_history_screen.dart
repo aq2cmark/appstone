@@ -77,8 +77,15 @@ class _PaperCheckHistoryScreenState extends State<PaperCheckHistoryScreen> {
     List<PaperCheckRecord> records,
   ) {
     final map = <String, PaperCheckRecord>{};
-    for (var i = 0; i < records.length - 1; i++) {
-      map[records[i].id] = records[i + 1];
+    // "Previous" has to mean the last check of the SAME document. Pairing each
+    // record with whatever happened to be checked before it compares one
+    // manuscript against a different file, and that delta tells the student
+    // nothing. Walk oldest-first so each file's own history lines up.
+    final lastByFile = <String, PaperCheckRecord>{};
+    for (final record in records.reversed) {
+      final previous = lastByFile[record.fileName];
+      if (previous != null) map[record.id] = previous;
+      lastByFile[record.fileName] = record;
     }
     return map;
   }

@@ -35,7 +35,16 @@ dependencies:
   # assets/fonts/ instead, so the app renders correctly offline, on a slow
   # campus connection, and deterministically inside widget tests.
   flutter_animate: ^4.5.0
-  fl_chart: ^1.0.0
+  # Pinned, not ^1.0.0: fl_chart 1.1.0+ calls Matrix4.translateByDouble /
+  # scaleByDouble, which only exist in vector_math 2.4.x. That needs Dart
+  # >=3.10, and this project builds on Dart 3.8.1 (Flutter 3.32.8), so pub
+  # resolves vector_math down to 2.1.4 and the app then fails to compile -
+  # debug and release alike. 1.0.0 is the last release free of that API.
+  # Safe to raise once the whole team is on a Dart >=3.10 SDK.
+  fl_chart: 1.0.0
+  # crypto: SHA-256 fingerprint of a manuscript, so re-checking the same
+  # document returns the stored result instead of re-grading it.
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:

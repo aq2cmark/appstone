@@ -866,12 +866,28 @@ exports.finishStudentPasswordChange = onCall(
     const groupRef = db().collection('groups').doc(groupId);
     await db().runTransaction(async (tx) => {
       const snap = await tx.get(groupRef);
-      if (!snap.exists) return;
-      const students = (snap.data().students || []).map((s) =>
+      if (!snap.exists) {
+        throw new HttpsError('not-found', 'Your group record was not found.');
+      }
+      // Report a miss instead of returning ok. Silently succeeding here left
+      // mustChangePassword set while the app said "Password updated", so the
+      // student was asked to set a password again on every reload with no
+      // indication anything had gone wrong.
+      let matched = false;
+      const students = (snap.data().students || []).map((s) => {
+        if (s.uid !== uid) return s;
+        matched = true;
         // Clear the temp password once they've set their own - it's no longer
         // valid and shouldn't linger in Firestore.
-        s.uid === uid ? { ...s, mustChangePassword: false, tempPassword: '' } : s,
-      );
+        return { ...s, mustChangePassword: false, tempPassword: '' };
+      });
+      if (!matched) {
+        throw new HttpsError(
+          'not-found',
+          'Your student record could not be matched in this group, so the ' +
+            'temporary-password flag could not be cleared. Please tell your adviser.',
+        );
+      }
       tx.update(groupRef, { students, updatedAt: FieldValue.serverTimestamp() });
     });
     return { ok: true };

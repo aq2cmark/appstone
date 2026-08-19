@@ -263,6 +263,10 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
+/// The rail's width once it shows labels. `_RailBrand` needs this too, so it
+/// lives here rather than inline on the `NavigationRail`.
+const double _railExtendedWidth = 212;
+
 class _Rail extends StatelessWidget {
   const _Rail({
     required this.index,
@@ -285,7 +289,7 @@ class _Rail extends StatelessWidget {
       onDestinationSelected: onSelect,
       extended: extended,
       minWidth: 76,
-      minExtendedWidth: 212,
+      minExtendedWidth: _railExtendedWidth,
       labelType:
           extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
       leading: Padding(
@@ -354,23 +358,31 @@ class _RailBrand extends StatelessWidget {
 
     if (!extended) return mark;
 
+    // NavigationRail lays its `leading` out with an unbounded width, so this
+    // Row has to be given a definite one - an Expanded child inside an
+    // unbounded Row is a layout error, not just a cosmetic one. Matching the
+    // rail's own extended width keeps the brand aligned with the
+    // destinations below it.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Row(
-        children: <Widget>[
-          mark,
-          AppSpacing.hMd,
-          Expanded(
-            child: Text(
-              'Appstone',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.titleLarge.copyWith(
-                color: colors.textPrimary,
+      child: SizedBox(
+        width: _railExtendedWidth - AppSpacing.lg * 2,
+        child: Row(
+          children: <Widget>[
+            mark,
+            AppSpacing.hMd,
+            Expanded(
+              child: Text(
+                'Appstone',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.titleLarge.copyWith(
+                  color: colors.textPrimary,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +28,7 @@ class PaperCheckController extends ChangeNotifier {
   LayoutReport? _layout;
   bool _layoutSkipped = false;
   String? _error;
+  DateTime? _reusedFrom;
 
   bool get running => _running;
   String? get fileName => _fileName;
@@ -32,6 +36,9 @@ class PaperCheckController extends ChangeNotifier {
   LayoutReport? get layout => _layout;
   bool get layoutSkipped => _layoutSkipped;
   String? get error => _error;
+  // Set when this result came from a previous check of identical content
+  // rather than a fresh grading run. The screen uses it to say so.
+  DateTime? get reusedFrom => _reusedFrom;
   bool get hasResult => _review != null || _error != null;
 
   // Starts checking [file] in the background. Safe to call away from any screen;
@@ -51,6 +58,7 @@ class PaperCheckController extends ChangeNotifier {
     _layout = null;
     _layoutSkipped = false;
     _error = null;
+    _reusedFrom = null;
     notifyListeners();
 
     try {
@@ -70,11 +78,25 @@ class PaperCheckController extends ChangeNotifier {
       notifyListeners();
 
       final text = await _extractor.extract(file);
-      _review = await _service.checkPaper(paperText: text);
+      final hash = _contentHash(text, _layout);
+
+      // Identical content was already graded, so reuse that verdict instead of
+      // asking the model again. This is what makes the same manuscript score
+      // the same twice: an LLM re-run drifts by a point or two per section
+      // even at temperature 0, and those add up across the rubric. Reusing
+      // also costs the student nothing against the daily AI allowance.
+      final previous = await _findPrevious(hash, groupId, studentId);
+      if (previous != null) {
+        _review = _reviewFromRecord(previous);
+        _reusedFrom = previous.createdAt;
+        return;
+      }
+
+      _review = await _service.checkPaper(paperText: text, layout: _layout);
       // Log this finished check so the student can compare it against earlier
       // ones. Kept inside the try (only successful checks are worth saving) but
       // self-contained so a history failure never becomes a check error.
-      await _saveToHistory(file, groupId, studentId);
+      await _saveToHistory(file, groupId, studentId, hash);
     } catch (error) {
       _error = _friendlyError(error);
     } finally {
@@ -89,6 +111,7 @@ class PaperCheckController extends ChangeNotifier {
     PlatformFile file,
     String? groupId,
     String? studentId,
+    String contentHash,
   ) async {
     final review = _review;
     if (review == null || groupId == null || studentId == null) return;
@@ -107,15 +130,78 @@ class PaperCheckController extends ChangeNotifier {
                 name: s.name,
                 score: s.score,
                 max: s.max,
+                comment: s.comment,
+                issues: s.issues,
               ),
             )
             .toList(),
         layoutPassCount: _layout?.passCount,
         layoutTotal: _layout?.total,
+        contentHash: contentHash,
       );
     } catch (_) {
       // History is a nice-to-have; the finished result is already on screen.
     }
+  }
+
+  // Fingerprint of everything the grade depends on. The layout report is part
+  // of it because Manuscript Mechanics is scored partly from those
+  // measurements, and _checkerVersion is part of it so that changing the
+  // rubric or the prompt retires every cached result rather than serving
+  // grading the current app would no longer produce.
+  static const int _checkerVersion = 2;
+
+  // Exposed so the caching guarantee can be tested directly: identical
+  // content must always fingerprint identically, or a re-upload silently
+  // becomes a fresh grading run again.
+  @visibleForTesting
+  static String contentHashOf(String text, LayoutReport? layout) =>
+      _contentHash(text, layout);
+
+  static String _contentHash(String text, LayoutReport? layout) {
+    final layoutSignature = layout == null
+        ? 'none'
+        : layout.rules.map((r) => '${r.name}=${r.pass}').join(';');
+    return sha256
+        .convert(utf8.encode('v$_checkerVersion|$layoutSignature|$text'))
+        .toString();
+  }
+
+  // Best-effort: a lookup failure (offline, rules, whatever) must never stop a
+  // check - it just means this one gets graded fresh.
+  Future<PaperCheckRecord?> _findPrevious(
+    String hash,
+    String? groupId,
+    String? studentId,
+  ) async {
+    if (groupId == null || studentId == null) return null;
+    try {
+      return await _history.findByContentHash(
+        groupId: groupId,
+        studentId: studentId,
+        contentHash: hash,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Rebuilds the on-screen review from a stored check, so a reused result shows
+  // exactly what the original run showed.
+  PaperReview _reviewFromRecord(PaperCheckRecord record) {
+    return PaperReview(
+      summary: record.summary,
+      sections: <RubricResult>[
+        for (final section in record.sections)
+          RubricResult(
+            name: section.name,
+            max: section.max,
+            score: section.score,
+            comment: section.comment,
+            issues: section.issues,
+          ),
+      ],
+    );
   }
 
   // Clears the last result (e.g. when a new file is picked). No-op while a check
@@ -127,6 +213,7 @@ class PaperCheckController extends ChangeNotifier {
     _layout = null;
     _layoutSkipped = false;
     _error = null;
+    _reusedFrom = null;
     notifyListeners();
   }
 
@@ -136,3 +223,4 @@ class PaperCheckController extends ChangeNotifier {
     return 'Something went wrong while checking the paper. Please try again.';
   }
 }
+

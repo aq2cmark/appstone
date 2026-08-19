@@ -201,6 +201,10 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        if (_controller.reusedFrom != null) ...<Widget>[
+          _buildReusedNote(_controller.reusedFrom!),
+          AppSpacing.vLg,
+        ],
         StaggeredEntrance(index: 0, child: _buildScoreCard(review)),
         AppSpacing.vLg,
         if (layout != null)
@@ -265,6 +269,50 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         ),
       ),
     );
+  }
+
+  // Shown when the score came from an earlier check of identical content.
+  // Without this the student would wonder why the check finished instantly -
+  // and would have no way to tell a reused verdict from a fresh one.
+  Widget _buildReusedNote(DateTime checkedAt) {
+    final colors = AppColors.of(context);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: colors.surfaceSunken,
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: colors.divider),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.history_rounded, size: 18, color: colors.textTertiary),
+          AppSpacing.hMd,
+          Expanded(
+            child: Text(
+              'This manuscript is unchanged since it was checked on '
+              '${_formatCheckedAt(checkedAt)}, so the same result is shown. '
+              'Edit the paper and upload again for a fresh check.',
+              style: AppTypography.bodySmall.copyWith(
+                color: colors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatCheckedAt(DateTime when) {
+    final local = when.toLocal();
+    const months = <String>[
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour < 12 ? 'AM' : 'PM';
+    return '${months[local.month - 1]} ${local.day}, ${local.year} at '
+        '$hour:$minute $period';
   }
 
   Widget _buildScoreCard(PaperReview review) {

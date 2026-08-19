@@ -8,6 +8,8 @@ class PaperCheckSectionScore {
     required this.name,
     required this.score,
     required this.max,
+    this.comment = '',
+    this.issues = const <String>[],
   });
 
   factory PaperCheckSectionScore.fromMap(Map<String, dynamic> map) {
@@ -15,14 +17,28 @@ class PaperCheckSectionScore {
       name: map['name'] as String? ?? '',
       score: (map['score'] as num?)?.toInt() ?? 0,
       max: (map['max'] as num?)?.toInt() ?? 0,
+      // Absent on checks saved before the feedback was persisted; those
+      // records still render, just without their comments.
+      comment: map['comment'] as String? ?? '',
+      issues: ((map['issues'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 
   final String name;
   final int score;
   final int max;
+  final String comment;
+  final List<String> issues;
 
-  Map<String, dynamic> toMap() => {'name': name, 'score': score, 'max': max};
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'score': score,
+    'max': max,
+    if (comment.isNotEmpty) 'comment': comment,
+    if (issues.isNotEmpty) 'issues': issues,
+  };
 }
 
 // One finished paper check, as stored in the `paper_checks` Firestore
@@ -44,6 +60,7 @@ class PaperCheckRecord {
     required this.layoutPassCount,
     required this.layoutTotal,
     required this.createdAt,
+    required this.contentHash,
   });
 
   factory PaperCheckRecord.fromSnapshot(
@@ -67,6 +84,7 @@ class PaperCheckRecord {
       layoutPassCount: (data['layoutPassCount'] as num?)?.toInt(),
       layoutTotal: (data['layoutTotal'] as num?)?.toInt(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      contentHash: data['contentHash'] as String? ?? '',
     );
   }
 
@@ -85,6 +103,9 @@ class PaperCheckRecord {
   final int? layoutTotal;
   // Null only for the brief moment before the server timestamp resolves.
   final DateTime? createdAt;
+  // Fingerprint of the graded content. Empty on checks saved before caching
+  // existed - those simply never match and get re-graded once.
+  final String contentHash;
 
   double get percent => maxScore == 0 ? 0 : totalScore / maxScore;
   bool get hasLayout => layoutPassCount != null && layoutTotal != null;
@@ -113,6 +134,7 @@ class PaperCheckHistoryService {
     required List<PaperCheckSectionScore> sections,
     int? layoutPassCount,
     int? layoutTotal,
+    String contentHash = '',
   }) {
     return _firestore.collection('paper_checks').add({
       'groupId': groupId,
@@ -125,8 +147,35 @@ class PaperCheckHistoryService {
       'sections': sections.map((s) => s.toMap()).toList(),
       if (layoutPassCount != null) 'layoutPassCount': layoutPassCount,
       if (layoutTotal != null) 'layoutTotal': layoutTotal,
+      if (contentHash.isNotEmpty) 'contentHash': contentHash,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // The most recent check of this exact content, or null if it has never been
+  // graded. This is what makes a re-upload return the identical score: the
+  // model is never asked twice about the same manuscript. Equality filters
+  // only, like fetchChecks, so no composite index is needed.
+  Future<PaperCheckRecord?> findByContentHash({
+    required String groupId,
+    required String studentId,
+    required String contentHash,
+  }) async {
+    if (contentHash.isEmpty) return null;
+    final snapshot = await _firestore
+        .collection('paper_checks')
+        .where('groupId', isEqualTo: groupId)
+        .where('studentId', isEqualTo: studentId)
+        .where('contentHash', isEqualTo: contentHash)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+    final records = snapshot.docs.map(PaperCheckRecord.fromSnapshot).toList();
+    records.sort((a, b) {
+      final aTime = a.createdAt ?? DateTime(0);
+      final bTime = b.createdAt ?? DateTime(0);
+      return bTime.compareTo(aTime);
+    });
+    return records.first;
   }
 
   // All checks for one student, newest first. Uses equality filters only (no
