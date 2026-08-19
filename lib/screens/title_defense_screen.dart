@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../services/defense_ai_service.dart';
 import '../services/defense_context_service.dart';
+import '../services/defense_session_plan.dart';
 import '../services/practice_history_service.dart';
 import '../services/recording_store.dart';
 import '../services/speech_transcription_service.dart';
@@ -17,6 +18,7 @@ import '../theme/app_typography.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/states/app_states.dart';
 import 'auth_gate.dart';
 import 'defense_results_screen.dart';
 
@@ -149,6 +151,15 @@ class _DefensePracticeSessionScreenState
   // their actual capstone. Empty when they never added any - the session then
   // behaves exactly as it did before.
   DefenseContext projectContext = const DefenseContext();
+  // The questions this run will actually ask. Starts as the fixed list every
+  // student gets, and is replaced once - before question one - with versions
+  // rewritten around the student's own project, but only when they gave context
+  // to rewrite them from. With none, this stays the fixed list.
+  late List<String> questions = widget.questions;
+  // True only while those rewrites are being fetched. The clock is held and the
+  // answer box hidden meanwhile, so nobody spends their time answering a
+  // question that is about to change under them.
+  bool preparingQuestions = false;
   // Shares the run's session id, so every answer transcribed during this
   // practice counts inside the run's single session instead of spending a
   // day's allowance of its own.
@@ -175,6 +186,15 @@ class _DefensePracticeSessionScreenState
   // Follow-ups are capped per topic too, so a student who's stuck on one
   // question gets moved to a new topic instead of being pressed forever.
   static const maxFollowUpsPerTopic = 2;
+  // This run's length and which questions may be followed up, drawn once before
+  // question one. Answers to every other question move the panel straight on
+  // without asking the model anything, which is what keeps a whole class
+  // practising at once inside the providers' per-minute caps.
+  late final DefenseSessionPlan plan = DefenseSessionPlan.draw(
+    baseQuestionCount: widget.questions.length,
+    maxQuestions: widget.maxQuestions,
+  );
+  late int followUpsLeft = plan.followUpBudget;
   int genericIndex = 0;
   String? pendingFollowUp;
   int totalAsked = 1;
@@ -194,7 +214,7 @@ class _DefensePracticeSessionScreenState
   String? recordingLocation;
   _RecordingFormat? recordingFormat;
 
-  String get currentQuestion => pendingFollowUp ?? widget.questions[genericIndex];
+  String get currentQuestion => pendingFollowUp ?? questions[genericIndex];
   bool get isFollowUp => pendingFollowUp != null;
 
   // Shared tips shown under every question.
@@ -208,17 +228,47 @@ class _DefensePracticeSessionScreenState
   void initState() {
     super.initState();
     sessionStart = DateTime.now();
-    loadProjectContext();
+    prepareSession();
     startQuestionTimer();
   }
 
-  // Reads on-device in a few milliseconds, and the first thing it's needed for is
-  // the first submitted answer - so the session starts immediately rather than
-  // showing a loading screen before question one.
-  Future<void> loadProjectContext() async {
+  // Two different sessions start here.
+  //
+  // A student who added no context gets the one that always existed: the saved
+  // context reads back empty in a few milliseconds, the fixed question one is
+  // already on screen with its clock running, and from there the panel can only
+  // follow up on what they actually say in their answers.
+  //
+  // A student who did add context gets their questions rewritten around their
+  // own project first. That is a network call, so the question and the answer
+  // box are held behind a short preparing state - showing them a generic
+  // question that then changes underneath them would be worse than a two-second
+  // wait - and the clock is restarted afterwards so none of that wait comes out
+  // of their answering time.
+  Future<void> prepareSession() async {
     final saved = await contextService.load();
     if (!mounted) return;
-    setState(() => projectContext = saved);
+    if (saved.isEmpty) {
+      setState(() => projectContext = saved);
+      return;
+    }
+
+    setState(() {
+      projectContext = saved;
+      preparingQuestions = true;
+    });
+
+    final tailored = await ai.tailorQuestions(
+      panelTitle: widget.title,
+      baseQuestions: widget.questions,
+      projectContext: saved.promptBlock,
+    );
+    if (!mounted) return;
+    setState(() {
+      questions = tailored;
+      preparingQuestions = false;
+      startQuestionTimer();
+    });
   }
 
   @override
@@ -242,8 +292,9 @@ class _DefensePracticeSessionScreenState
 
   void tickTimer() {
     // Recording is the student answering, so that time is theirs to spend - but
-    // transcribing is us making them wait, and shouldn't cost them the clock.
-    if (!mounted || isEvaluating || transcribing) return;
+    // transcribing, evaluating and preparing the questions are all us making
+    // them wait, and shouldn't cost them the clock.
+    if (!mounted || isEvaluating || transcribing || preparingQuestions) return;
     if (secondsLeft > 0) {
       setState(() => secondsLeft--);
     }
@@ -326,6 +377,8 @@ class _DefensePracticeSessionScreenState
 
   Widget _buildMainColumn() {
     final colors = AppColors.of(context);
+
+    if (preparingQuestions) return buildPreparingCard();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -449,7 +502,10 @@ class _DefensePracticeSessionScreenState
   // Question counter, countdown ring and progress track in one card.
   Widget buildProgressCard() {
     final colors = AppColors.of(context);
-    final progress = (totalAsked / widget.maxQuestions).clamp(0.0, 1.0);
+    // Against this run's planned length, not the mode's ceiling: a student on a
+    // six-question draw should see the bar fill at six, not sit two-thirds full
+    // at the last question of their defense.
+    final progress = (totalAsked / plan.targetQuestions).clamp(0.0, 1.0);
     final minutes = secondsLeft ~/ 60;
     final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
 
@@ -495,7 +551,7 @@ class _DefensePracticeSessionScreenState
                       ),
                       AppSpacing.vXs,
                       Text(
-                        'of up to ${widget.maxQuestions}',
+                        'of up to ${plan.targetQuestions}',
                         style: AppTypography.bodySmall.copyWith(
                           color: colors.textSecondary,
                         ),
@@ -513,6 +569,23 @@ class _DefensePracticeSessionScreenState
               backgroundColor: colors.surfaceSunken,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Stands in for the question card while the panel turns its fixed questions
+  // into ones about this student's system. Seconds at most, only ever before
+  // question one, and only for a student who gave context - if the rewrite
+  // fails, the generic questions appear here instead of an error.
+  Widget buildPreparingCard() {
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(AppSpacing.xl),
+        child: AppLoading(
+          message: 'The panel is reading your project and preparing its '
+              'questions...',
+          compact: true,
         ),
       ),
     );
@@ -852,11 +925,17 @@ class _DefensePracticeSessionScreenState
     setState(() => isEvaluating = true);
     exchanges.add(QaExchange(question: currentQuestion, answer: answer));
 
-    // Already hit the hard cap, or pressed this same topic enough times:
-    // stop asking follow-ups and move to a new topic instead.
+    // Four reasons not to spend an AI call on this answer: the run is full, this
+    // topic has been pressed enough times already, the run's follow-ups are all
+    // spent, or this question was never one of the planned follow-up slots. The
+    // last two are why a run costs a handful of calls instead of one per answer.
     final atQuestionCap = totalAsked >= widget.maxQuestions;
     final atTopicCap = followUpsOnTopic >= maxFollowUpsPerTopic;
-    if (atQuestionCap || atTopicCap) {
+    final outOfFollowUps = followUpsLeft <= 0;
+    // Only base questions are planned. A follow-up's own answer can be pressed
+    // again on the same topic, budget permitting, the way it always could.
+    final unplannedTopic = !isFollowUp && !plan.allowsFollowUpAt(genericIndex);
+    if (atQuestionCap || atTopicCap || outOfFollowUps || unplannedTopic) {
       await advancePastCurrentQuestion();
       return;
     }
@@ -877,6 +956,7 @@ class _DefensePracticeSessionScreenState
           pendingFollowUp = followUp.followUpQuestion;
           totalAsked++;
           followUpsOnTopic++;
+          followUpsLeft--;
           resetAnswerInput();
           isEvaluating = false;
         });
@@ -900,7 +980,7 @@ class _DefensePracticeSessionScreenState
     pendingFollowUp = null;
     followUpsOnTopic = 0;
     genericIndex++;
-    if (genericIndex >= widget.questions.length ||
+    if (genericIndex >= questions.length ||
         totalAsked >= widget.maxQuestions) {
       await finishSession();
       return;
@@ -934,6 +1014,9 @@ class _DefensePracticeSessionScreenState
         MaterialPageRoute(
           builder: (_) => DefenseResultsScreen(
             title: widget.title,
+            // The fixed list, not this run's rewritten one: "Practice again"
+            // should tailor afresh from whatever context is saved then, not
+            // rewrite questions that were already rewritten once.
             questions: widget.questions,
             maxQuestions: widget.maxQuestions,
             secondsPerQuestion: widget.secondsPerQuestion,

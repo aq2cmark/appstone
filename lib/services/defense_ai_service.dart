@@ -122,6 +122,121 @@ $projectContext
 ''';
   }
 
+  // Rewrites the panel's fixed questions so they ask about THIS student's
+  // capstone instead of a generic one. Called once, before question one.
+  //
+  // With no context there is nothing to tailor to, so the fixed list comes back
+  // untouched and no AI call is made at all: that session asks exactly the
+  // questions it always did, and the panel can only work from what the student
+  // says in their answers.
+  //
+  // Rides on this run's session id, so tailoring counts inside the same single
+  // session as the run's follow-ups and scoring rather than costing extra.
+  //
+  // Never throws. If the model is unreachable or answers with something
+  // unusable, the student practices on the generic questions instead of losing
+  // the session to an error.
+  Future<List<String>> tailorQuestions({
+    required String panelTitle,
+    required List<String> baseQuestions,
+    required String projectContext,
+  }) async {
+    if (projectContext.trim().isEmpty || baseQuestions.isEmpty) {
+      return baseQuestions;
+    }
+
+    try {
+      final numbered = <String>[
+        for (var i = 0; i < baseQuestions.length; i++)
+          '${i + 1}. ${baseQuestions[i]}',
+      ].join('\n');
+
+      final result = await _generateJson('''
+You are a strict capstone panelist preparing a $panelTitle practice defense.
+${_contextSection(projectContext)}
+These are the ${baseQuestions.length} questions this panel always asks, in order:
+$numbered
+
+Rewrite each question so it asks the same thing about THIS student's project
+specifically - naming their system, their users or their technologies where it
+fits - instead of asking it in the abstract. Rules:
+- Return the same number of questions, in the same order, one per original.
+- Keep each question's original intent; never swap in a different topic.
+- Keep each one to a single sentence a student can answer out loud.
+- Make the student explain things: never state the answer inside the question,
+  and never treat anything in the background as already proven.
+- If the background says nothing useful for a question, return that question
+  unchanged rather than inventing project details.
+
+Respond ONLY with JSON in this exact shape:
+{"questions": ["rewritten question 1", "rewritten question 2", ...]}
+''').timeout(
+        // Nothing is on screen but a "preparing" card while this runs, so a
+        // stalled connection must not strand the student before question one.
+        // Giving up here costs them the tailoring, not the practice.
+        const Duration(seconds: 25),
+      );
+
+      final rewritten = result['questions'];
+      if (rewritten is! List) return baseQuestions;
+
+      return <String>[
+        for (var i = 0; i < baseQuestions.length; i++)
+          _usableQuestion(
+            i < rewritten.length ? rewritten[i] : null,
+            baseQuestions[i],
+          ),
+      ];
+    } catch (_) {
+      return baseQuestions;
+    }
+  }
+
+  // One rewritten question, or the original whenever the model gave back
+  // something a panel would not actually ask: a blank, a non-string, or a
+  // paragraph where a question belongs.
+  static String _usableQuestion(Object? rewritten, String original) {
+    if (rewritten is! String) return original;
+    final clean = rewritten.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.isEmpty || clean.length > 300) return original;
+    return clean;
+  }
+
+  // What the panel is told to base a follow-up on. With a project in hand it
+  // presses on that project; without one it has nothing to go on but the words
+  // the student just used, and must not invent a system for them.
+  static String _followUpBasis(String projectContext) {
+    if (projectContext.trim().isEmpty) {
+      return '''
+No project background was given, so work only from what the student actually
+said. Base any follow-up on their own words - a claim they did not justify, a
+vague term, a step they skipped - and never assume details about their system
+that they have not mentioned themselves.''';
+    }
+    return '''
+Judge the answer against the project described above and make any follow-up
+question specific to it - name the actual system, users or technologies rather
+than asking something generic. Do not treat facts from the background as things
+the student already said: they still have to explain it themselves.''';
+  }
+
+  // The same split at grading time: with a project to grade against, the answers
+  // are measured against that system; without one, only against the question
+  // that was asked.
+  static String _gradingBasis(String projectContext) {
+    if (projectContext.trim().isEmpty) {
+      return '''
+No project background was given, so grade each answer only on how well it
+answers the question that was asked. Do not penalise the student for details
+about their system you were never told.''';
+    }
+    return '''
+Grade the answers against the project described above: an answer that
+contradicts or leaves out something important about their own system should
+score lower than one that explains it well. Score only what the student said in
+the transcript, never the background itself.''';
+  }
+
   Future<DefenseFollowUp> evaluateAnswer({
     required String panelTitle,
     required String question,
@@ -145,11 +260,7 @@ well, do not invent a follow-up just to have one. Also, if the student seems to 
 not know the answer, is repeating themselves, or you've already pressed this same topic
 once or more, prefer to move on to a new topic instead of asking another narrow follow-up
 on the same point - set hasGap to false in that case, even if the answer wasn't perfect.
-
-If project background was given above, judge the answer against that project and make any
-follow-up question specific to it - name the actual system, users or technologies rather
-than asking something generic. Do not treat facts from the background as things the student
-already said in their answer: they still have to explain it themselves.
+${_followUpBasis(projectContext)}
 
 Respond ONLY with JSON in this exact shape:
 {"hasGap": true or false, "followUpQuestion": "a short, specific follow-up question, or empty string if hasGap is false"}
@@ -186,11 +297,7 @@ Also give an overall score from 0 to 100.
 Also write "insights": 2-4 sentences in plain language a student would understand,
 explaining WHY these scores were given. Reference specific things they actually said -
 concrete strengths and concrete weaknesses - not generic praise or criticism.
-
-If project background was given above, grade the answers against that project: an answer
-that contradicts or leaves out something important about their own system should score
-lower than one that explains it well. Score only what the student said in the transcript,
-never the background itself.
+${_gradingBasis(projectContext)}
 
 Respond ONLY with JSON in this exact shape:
 {"overall": 0, "clarity": 0, "technical": 0, "completeness": 0, "presentation": 0, "insights": "..."}

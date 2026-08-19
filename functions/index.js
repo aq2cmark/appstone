@@ -194,8 +194,74 @@ const FEATURE_UPSTREAM = {
   'speech-to-text': 'groqAudio',
 };
 
-const upstreamFor = (feature) =>
-  UPSTREAMS[FEATURE_UPSTREAM[feature] || 'nararouter'];
+const upstreamKeyFor = (feature) => FEATURE_UPSTREAM[feature] || 'nararouter';
+
+// Where a feature goes when its own provider can't answer - still rate-limited
+// after every backoff below, or failing outright. Both chat providers are
+// OpenAI-compatible, so the app's request body works on either one unchanged;
+// only the model name has to be swapped, because a model belongs to a provider.
+//
+// This is what stops one provider's per-minute cap from being the app's per-minute
+// cap. Groq allows 30 requests/minute and NaraRouter 10, and they are separate
+// allowances: a busy minute on one is usually a quiet minute on the other.
+const FALLBACK_UPSTREAM = {
+  nararouter: 'groq',
+  groq: 'nararouter',
+  // Whisper is audio, and NaraRouter routes chat only. A transcription has
+  // nowhere else to go, so it stays on Groq and fails the way it always did.
+  groqAudio: null,
+};
+
+// The model to ask the stand-in for. Kept in step with the app's own choices:
+// `mistral-large` in defense_ai_service / paper_checker_service / workflow_service,
+// `openai/gpt-oss-20b` in title_generator_service.
+const FALLBACK_MODEL = {
+  nararouter: 'mistral-large',
+  groq: 'openai/gpt-oss-20b',
+};
+
+// Parameters only one provider understands, dropped on the way to the other.
+// The title generator sends gpt-oss's `reasoning_effort`; Mistral has no notion
+// of it, and a strict gateway rejects the whole request over one unknown field.
+const PROVIDER_ONLY_FIELDS = {
+  groq: ['reasoning_effort'],
+  nararouter: [],
+};
+
+// The same request, addressed to the stand-in: its model, minus anything that
+// was meant for the provider that could not answer.
+function bodyForFallback(body, from, to) {
+  const next = { ...body, model: FALLBACK_MODEL[to] };
+  for (const field of PROVIDER_ONLY_FIELDS[from] || []) delete next[field];
+  return next;
+}
+
+// Worth failing over: the provider's per-minute cap is still held (429 after
+// every retry), or the provider itself is unwell (5xx). A 4xx is our own bad
+// request and would fail identically on the stand-in.
+const worthFailingOver = (status) => status === 429 || status >= 500;
+
+// Only start a second provider's attempt while there is comfortably time left
+// inside timeoutSeconds - the first provider may already have spent ~21s on its
+// backoff schedule. Past this, reporting 'busy' beats timing the student out.
+const FAILOVER_DEADLINE_MS = 70000;
+
+async function callProvider(key, body) {
+  const route = UPSTREAMS[key];
+  return route.relayTarget
+    ? callRelay(route.relayTarget, body)
+    : callUpstream(route, body);
+}
+
+// Lets go of a response we decided not to use. Without this its socket is held
+// open until the garbage collector gets to it.
+async function discardResponse(response) {
+  try {
+    if (response && response.body) await response.body.cancel();
+  } catch (_) {
+    // Nothing to clean up, or already consumed.
+  }
+}
 
 // Both providers cap requests per minute ACROSS the whole app (not per user) -
 // 10/min on NaraRouter, 30/min on Groq - so a handful of students acting in the
@@ -407,16 +473,81 @@ exports.nararouter = onRequest(
     try {
       // Direct call for NaraRouter; the relay hop for Groq-bound features. Both
       // return a plain fetch Response, so everything below treats them alike.
-      const route = upstreamFor(feature);
-      const upstream = route.relayTarget
-        ? await callRelay(route.relayTarget, req.body)
-        : await callUpstream(route, req.body);
+      const startedAt = Date.now();
+      const primary = upstreamKeyFor(feature);
+      let provider = primary;
+      let upstream = null;
+      let primaryError = null;
+      try {
+        upstream = await callProvider(primary, req.body);
+      } catch (error) {
+        // Couldn't even reach the provider. Not fatal yet - the other one may
+        // still be up - so hold the error and decide after the failover.
+        primaryError = error;
+      }
 
-      // Still rate-limited after every retry. Report it as 'busy' so the app
-      // tells the student to try again shortly, instead of wrongly claiming
-      // their daily allowance is gone - and give the reserved session back.
+      // Failover. The student's session is already reserved and is not spent
+      // again here: this is the same request, answered by the other provider,
+      // so switching costs them nothing and they are never told which one
+      // served them.
+      const fallback = FALLBACK_UPSTREAM[primary];
+      const needsFallback = primaryError !== null || worthFailingOver(upstream.status);
+      if (fallback && needsFallback && Date.now() - startedAt < FAILOVER_DEADLINE_MS) {
+        logger.warn('AI provider unavailable; trying the other one', {
+          feature,
+          from: primary,
+          to: fallback,
+          status: primaryError ? 'threw' : upstream.status,
+        });
+        try {
+          const standIn = await callProvider(
+            fallback,
+            bodyForFallback(req.body, primary, fallback),
+          );
+          if (standIn.ok) {
+            await discardResponse(upstream);
+            upstream = standIn;
+            provider = fallback;
+          } else {
+            logger.error('AI failover provider also failed', {
+              feature,
+              provider: fallback,
+              status: standIn.status,
+            });
+            if (upstream === null) {
+              // The first provider never answered at all, so even a refusal
+              // from the stand-in tells the student more than a bare proxy
+              // error would.
+              upstream = standIn;
+              provider = fallback;
+            } else {
+              // Both are refusing. Keep the first provider's answer so the
+              // student gets its status - a 429 here still means "busy", not
+              // "spent".
+              await discardResponse(standIn);
+            }
+          }
+        } catch (error) {
+          logger.error('AI failover provider unreachable', {
+            feature,
+            provider: fallback,
+            message: error.message,
+          });
+        }
+      }
+
+      // Neither provider produced a response at all.
+      if (upstream === null) throw primaryError;
+
+      // Still rate-limited after every retry - and, where a stand-in exists, on
+      // both providers. Report it as 'busy' so the app tells the student to try
+      // again shortly, instead of wrongly claiming their daily allowance is
+      // gone - and give the reserved session back.
       if (upstream.status === 429) {
-        logger.warn('AI upstream still rate-limited after retries', { feature });
+        logger.warn('AI upstream still rate-limited after retries', {
+          feature,
+          provider,
+        });
         if (added) await refundSession(usageRef, feature, sessionId, today);
         res.status(429).json({
           error: {
@@ -447,7 +578,9 @@ exports.nararouter = onRequest(
       if (!upstream.ok) {
         logger.error('AI upstream returned an error', {
           feature,
-          provider: FEATURE_UPSTREAM[feature] || 'nararouter',
+          // The provider that actually answered, which is not always the
+          // feature's usual one once a failover has happened.
+          provider,
           status: upstream.status,
           body: text.slice(0, 500),
         });
