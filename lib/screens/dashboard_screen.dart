@@ -531,7 +531,7 @@ class _HomeViewState extends State<HomeView> {
         requiresPremium: true,
       ),
       _FeatureDef(
-        title: 'AI Workflow',
+        title: 'AI Workflow Planner',
         subtitle: 'A phase timeline built from your paper and deadline',
         icon: Icons.calendar_month_rounded,
         color: colors.moduleWorkflow,
@@ -539,7 +539,7 @@ class _HomeViewState extends State<HomeView> {
         requiresPremium: true,
       ),
       _FeatureDef(
-        title: 'Paper Checker',
+        title: 'AI Paper Checker',
         subtitle: 'Rubric score and formatting check on your manuscript',
         icon: Icons.fact_check_rounded,
         color: colors.modulePaper,

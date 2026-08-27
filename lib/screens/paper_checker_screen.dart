@@ -43,7 +43,7 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       listenable: _controller,
       builder: (context, _) {
         return AppScaffold(
-          title: 'Paper Checker',
+          title: 'AI Paper Checker',
           subtitle: 'Graded against the manuscript rubric',
           accent: colors.modulePaper,
           maxContentWidth: AppContentWidth.wide,
@@ -144,9 +144,7 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
               ),
               AppSpacing.vXs,
               Text(
-                file == null
-                    ? 'PDF, DOCX or TXT'
-                    : _fileSizeText(file.size),
+                file == null ? 'PDF, DOCX or TXT' : _fileSizeText(file.size),
                 textAlign: TextAlign.center,
                 style: AppTypography.bodySmall.copyWith(
                   color: colors.textSecondary,
@@ -193,7 +191,8 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         icon: Icons.fact_check_outlined,
         accent: colors.modulePaper,
         title: 'No check yet',
-        body: 'Pick your manuscript and run a check. You will get a rubric '
+        body:
+            'Pick your manuscript and run a check. You will get a rubric '
             'score, a formatting report, and the specific issues to fix.',
       );
     }
@@ -256,8 +255,7 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
             ),
             AppSpacing.vXs,
             Text(
-              'Reading every chapter and grading it against the rubric. This '
-              'usually takes 20-60 seconds. You can move around the app - the '
+              'Reading every chapter and grading it against the rubric. You can move around the app - the '
               'check keeps running and the result will be here when you '
               'come back.',
               textAlign: TextAlign.center,
@@ -305,8 +303,18 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
   String _formatCheckedAt(DateTime when) {
     final local = when.toLocal();
     const months = <String>[
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
     final minute = local.minute.toString().padLeft(2, '0');

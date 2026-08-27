@@ -78,7 +78,7 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
 
     return Scaffold(
             appBar: AppBar(
-                title: const Text('AI Workflow'),
+                title: const Text('AI Workflow Planner'),
         bottom: appBarAccent(colors.moduleWorkflow),
         actions: [
           if (_plan != null)
