@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 import '../services/defense_ai_service.dart';
 import '../services/defense_context_service.dart';
 import '../services/defense_session_plan.dart';
+import '../services/friendly_error.dart';
 import '../services/practice_history_service.dart';
 import '../services/recording_store.dart';
 import '../services/speech_transcription_service.dart';
@@ -968,9 +969,12 @@ class _DefensePracticeSessionScreenState
     } catch (error) {
       if (!mounted) return;
       setState(() => isEvaluating = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      // Not error.toString(): a StateError renders as "Bad state: ..." and the
+      // AI limit copy - which now names the wait - is exactly the kind of
+      // message a student needs to read cleanly.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 
@@ -1028,9 +1032,12 @@ class _DefensePracticeSessionScreenState
     } catch (error) {
       if (!mounted) return;
       setState(() => isEvaluating = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      // Not error.toString(): a StateError renders as "Bad state: ..." and the
+      // AI limit copy - which now names the wait - is exactly the kind of
+      // message a student needs to read cleanly.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMessage(error))),
+      );
     }
   }
 

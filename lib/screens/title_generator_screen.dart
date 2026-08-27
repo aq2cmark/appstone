@@ -7,6 +7,7 @@ import '../theme/app_spacing.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/theme_toggle_button.dart';
+import '../services/friendly_error.dart';
 import '../services/title_generator_service.dart';
 import '../theme/app_typography.dart';
 
@@ -565,7 +566,9 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('Generation Failed'),
-          content: Text(error.toString()),
+          // A StateError renders as "Bad state: ..." through toString(), which
+          // would bury the AI limit copy and the wait it now names.
+          content: Text(friendlyErrorMessage(error)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),

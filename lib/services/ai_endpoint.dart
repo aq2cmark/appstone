@@ -58,13 +58,51 @@ Future<Map<String, String>> naraRouterHeaders({
 
 // The proxy answers 429 for two very different reasons, told apart by
 // error.code:
-//   'daily-limit' - this feature's daily allowance is spent; come back tomorrow.
+//   'daily-limit' - this feature's daily allowance is spent; the response says
+//                   how long until it resets.
 //   'busy'        - NaraRouter's per-minute cap held even after the proxy waited
 //                   it out. Nothing is used up; trying again shortly works.
-const _dailyLimitFallback =
-    "You've reached today's AI limit for this feature. Try again tomorrow.";
 const _busyFallback =
     'The AI service is busy right now. Please try again in a moment.';
+
+// The proxy normally writes this sentence itself, wait included. This is the
+// same sentence for the case where its response never arrived intact - a
+// mangled body, an error page from something in between - so a student is told
+// when they can come back even then.
+String _dailyLimitFallback() =>
+    "You've reached today's AI limit for this feature. You can use it again in "
+    '${_untilDailyReset()}.';
+
+// Everyone using Appstone is in the Philippines, and the proxy buckets the daily
+// allowance against that same UTC+8 day (see QUOTA_UTC_OFFSET_HOURS in
+// functions/index.js), so turns come back at midnight where the student is.
+//
+// Deliberately not the device's own zone: the server decides when the allowance
+// resets, and a device set to another zone - or a wrong clock - would otherwise
+// be told a time the server does not agree with.
+const _quotaUtcOffset = Duration(hours: 8);
+
+String _untilDailyReset() {
+  final local = DateTime.now().toUtc().add(_quotaUtcOffset);
+  final nextMidnight = DateTime.utc(local.year, local.month, local.day + 1);
+  return _humanDuration(nextMidnight.difference(local));
+}
+
+// "6 hours 12 minutes", "12 minutes", "30 seconds". Rounded to whole units: this
+// is written into a message once, not counted down, so it should not imply more
+// precision than it has.
+String _humanDuration(Duration left) {
+  if (left.inMinutes < 1) {
+    final seconds = left.inSeconds < 1 ? 1 : left.inSeconds;
+    return '$seconds second${seconds == 1 ? '' : 's'}';
+  }
+  final hours = left.inHours;
+  final minutes = left.inMinutes % 60;
+  return <String>[
+    if (hours > 0) '$hours hour${hours == 1 ? '' : 's'}',
+    if (minutes > 0) '$minutes minute${minutes == 1 ? '' : 's'}',
+  ].join(' ');
+}
 
 String? _errorCode(String responseBody) {
   try {
@@ -92,5 +130,5 @@ String aiRateLimitMessage(String responseBody) {
   } catch (_) {
     // fall through to the default
   }
-  return _dailyLimitFallback;
+  return _dailyLimitFallback();
 }

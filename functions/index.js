@@ -241,16 +241,27 @@ function bodyForFallback(body, from, to) {
 // request and would fail identically on the stand-in.
 const worthFailingOver = (status) => status === 429 || status >= 500;
 
-// Only start a second provider's attempt while there is comfortably time left
-// inside timeoutSeconds - the first provider may already have spent ~21s on its
-// backoff schedule. Past this, reporting 'busy' beats timing the student out.
-const FAILOVER_DEADLINE_MS = 70000;
+// Only start a second provider's attempt while there is real time left for it to
+// finish in. A stand-in that begins a manuscript-sized generation late is how a
+// request reaches the Cloud Run timeout, and a timed-out request is worse than a
+// "busy" message: it returns no CORS headers, so the browser reports it as a
+// CORS failure and the student sees a generic "something went wrong".
+const FAILOVER_DEADLINE_MS = 30000;
 
-async function callProvider(key, body) {
+// How many times a provider's own 429 is waited out before we give up on it.
+// When there is a stand-in, one retry is enough: ~3 seconds establishes whether
+// this is a passing burst, and beyond that the other provider will answer sooner
+// than this one will. The full schedule is for a provider with nowhere to fail
+// over to, where waiting really is the only option.
+const RETRIES_BEFORE_FAILOVER = 1;
+
+async function callProvider(key, body, options) {
   const route = UPSTREAMS[key];
+  // A relayed call backs off inside the relay, which owns its own schedule - the
+  // retry budget below only reaches upstreams this function calls directly.
   return route.relayTarget
     ? callRelay(route.relayTarget, body)
-    : callUpstream(route, body);
+    : callUpstream(route, body, options);
 }
 
 // Lets go of a response we decided not to use. Without this its socket is held
@@ -275,6 +286,66 @@ async function discardResponse(response) {
 const RATE_LIMIT_BACKOFF_MS = [3000, 6000, 12000];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The allowance is a *day* to a student, so it turns over at their midnight, not
+// at UTC's. Everyone using Appstone is in the Philippines (UTC+8, no DST), so the
+// day is bucketed against that offset: a student who spends their turns at 9pm
+// gets them back three hours later, not at 8 the next morning.
+//
+// Cloud Run runs in UTC and has no notion of the caller's zone, so the offset is
+// named here rather than read from the request - a device clock or an IP guess
+// would be a worse authority than a college that sits in one time zone.
+const QUOTA_UTC_OFFSET_HOURS = 8;
+const QUOTA_OFFSET_MS = QUOTA_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+
+// The bucket key a session is counted against: the date it is, locally.
+function quotaDayKey(now = new Date()) {
+  return new Date(now.getTime() + QUOTA_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// When a spent allowance comes back: the next local midnight.
+function millisUntilQuotaReset(now = new Date()) {
+  const local = new Date(now.getTime() + QUOTA_OFFSET_MS);
+  const nextLocalMidnight = Date.UTC(
+    local.getUTCFullYear(),
+    local.getUTCMonth(),
+    local.getUTCDate() + 1,
+  );
+  return Math.max(0, nextLocalMidnight - local.getTime());
+}
+
+// A wait a student can act on: "6 hours 12 minutes", "12 minutes", "45 seconds".
+// Deliberately not a countdown - this is written into one message at the moment
+// of refusal, so it rounds down to whole units and never claims more precision
+// than it has.
+function humanDuration(ms) {
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 1) {
+    const seconds = Math.max(1, Math.round(ms / 1000));
+    return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`);
+  return parts.join(' ');
+}
+
+// How long to tell the student to wait out a 'busy' 429. The provider's own
+// Retry-After is the honest answer when it sends one; otherwise a per-minute
+// window is, by definition, over within a minute.
+function busyRetrySeconds(response) {
+  const retryAfter = response && response.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const ms = Number.isFinite(seconds)
+      ? seconds * 1000
+      : Date.parse(retryAfter) - Date.now();
+    if (ms > 0) return Math.min(Math.ceil(ms / 1000), 300);
+  }
+  return 60;
+}
 
 // How long to wait before retrying a 429. Prefers upstream's Retry-After (given
 // either as seconds or an HTTP date) and otherwise falls back to our backoff
@@ -319,7 +390,13 @@ function audioForm(body) {
 
 // One AI call to the given upstream, waiting out per-minute rate limits.
 // Returns the final response - still a 429 if every retry was rate-limited too.
-async function callUpstream(upstream, body) {
+// [maxRetries] caps how much of the backoff schedule is spent; the caller lowers
+// it when another provider could answer instead of this one.
+async function callUpstream(
+  upstream,
+  body,
+  { maxRetries = RATE_LIMIT_BACKOFF_MS.length } = {},
+) {
   for (let attempt = 0; ; attempt++) {
     const isAudio = upstream.audio === true;
     const response = await fetch(upstream.url, {
@@ -332,7 +409,11 @@ async function callUpstream(upstream, body) {
       },
       body: isAudio ? audioForm(body) : JSON.stringify(body),
     });
-    if (response.status !== 429 || attempt >= RATE_LIMIT_BACKOFF_MS.length) {
+    if (
+      response.status !== 429 ||
+      attempt >= maxRetries ||
+      attempt >= RATE_LIMIT_BACKOFF_MS.length
+    ) {
       return response;
     }
     const delay = retryDelayMs(response, attempt);
@@ -397,7 +478,13 @@ exports.nararouter = onRequest(
     secrets: [NARAROUTER_API_KEY, GROQ_RELAY_SECRET],
     cors: true,
     memory: '256MiB',
-    timeoutSeconds: 120,
+    // A paper check is the heaviest call the app makes: up to 48,000 characters
+    // of manuscript plus the rubric, graded into a long structured JSON. At 120s
+    // those requests were being killed by Cloud Run mid-generation, and a
+    // platform-terminated request never reaches the CORS middleware above - so
+    // the browser reported a missing Access-Control-Allow-Origin header and the
+    // student saw "Could not check this paper" for what was really a timeout.
+    timeoutSeconds: 300,
     // Locked to signed-in users below, so this can scale for real traffic
     // without a random script being able to burn AI tokens.
     maxInstances: 100,
@@ -434,7 +521,9 @@ exports.nararouter = onRequest(
     const sessionId =
       String(req.headers['x-ai-session'] || '').slice(0, 80) ||
       `call-${Date.now()}-${Math.random()}`;
-    const today = new Date().toISOString().slice(0, 10);
+    // Bucketed against the student's own day (see quotaDayKey), so turns come
+    // back at midnight where they are rather than at 8am.
+    const today = quotaDayKey();
     const usageRef = db().collection('aiUsage').doc(uid);
     // `added` tells us this request is what reserved the session, so only it may
     // hand the session back if the AI call then fails (see refundSession).
@@ -460,11 +549,18 @@ exports.nararouter = onRequest(
     });
     if (!allowed) {
       // 'daily-limit': the student spent this feature's allowance. Distinct from
-      // the 'busy' 429 below - this one genuinely means "come back tomorrow".
+      // the 'busy' 429 below - this one means "come back when it resets", and
+      // says exactly when that is rather than leaving them to guess.
+      const resetInMs = millisUntilQuotaReset();
+      res.set('Retry-After', String(Math.ceil(resetInMs / 1000)));
       res.status(429).json({
         error: {
           code: 'daily-limit',
-          message: `You've reached today's limit for this feature (${DAILY_AI_LIMIT} per day). Please try again tomorrow.`,
+          message:
+            `You've used all ${DAILY_AI_LIMIT} of today's turns for this ` +
+            `feature. You can use it again in ${humanDuration(resetInMs)}.`,
+          retryAfterSeconds: Math.ceil(resetInMs / 1000),
+          resetAt: new Date(Date.now() + resetInMs).toISOString(),
         },
       });
       return;
@@ -475,11 +571,17 @@ exports.nararouter = onRequest(
       // return a plain fetch Response, so everything below treats them alike.
       const startedAt = Date.now();
       const primary = upstreamKeyFor(feature);
+      const fallback = FALLBACK_UPSTREAM[primary];
       let provider = primary;
       let upstream = null;
       let primaryError = null;
       try {
-        upstream = await callProvider(primary, req.body);
+        upstream = await callProvider(primary, req.body, {
+          // With a stand-in available, spending the whole backoff schedule here
+          // just delays the provider that would have answered. Without one,
+          // waiting it out is the only thing that can help.
+          ...(fallback ? { maxRetries: RETRIES_BEFORE_FAILOVER } : {}),
+        });
       } catch (error) {
         // Couldn't even reach the provider. Not fatal yet - the other one may
         // still be up - so hold the error and decide after the failover.
@@ -490,7 +592,6 @@ exports.nararouter = onRequest(
       // again here: this is the same request, answered by the other provider,
       // so switching costs them nothing and they are never told which one
       // served them.
-      const fallback = FALLBACK_UPSTREAM[primary];
       const needsFallback = primaryError !== null || worthFailingOver(upstream.status);
       if (fallback && needsFallback && Date.now() - startedAt < FAILOVER_DEADLINE_MS) {
         logger.warn('AI provider unavailable; trying the other one', {
@@ -549,11 +650,18 @@ exports.nararouter = onRequest(
           provider,
         });
         if (added) await refundSession(usageRef, feature, sessionId, today);
+        // The provider's own Retry-After when it sent one, otherwise a minute -
+        // a per-minute window cannot outlast that. Nothing was spent here, so
+        // this really is just a wait.
+        const retrySeconds = busyRetrySeconds(upstream);
+        res.set('Retry-After', String(retrySeconds));
         res.status(429).json({
           error: {
             code: 'busy',
             message:
-              'The AI service is busy right now. Please try again in a moment.',
+              'The AI service is busy right now. Please try again in ' +
+              `${humanDuration(retrySeconds * 1000)}.`,
+            retryAfterSeconds: retrySeconds,
           },
         });
         return;

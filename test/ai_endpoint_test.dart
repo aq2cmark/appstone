@@ -45,9 +45,28 @@ void main() {
     expect(message.toLowerCase(), isNot(contains('tomorrow')));
   });
 
-  test('an unreadable 429 falls back to the daily-limit wording', () {
-    expect(aiRateLimitMessage('not json').toLowerCase(), contains('tomorrow'));
-    expect(aiRateLimitMessage('{"error":{}}').toLowerCase(), contains('tomorrow'));
+  test('an unreadable 429 still says when the allowance comes back', () {
+    // The proxy writes this sentence itself, wait included. When its body never
+    // arrives intact the app has to say it, and "try again tomorrow" was wrong
+    // for anyone who ran out before the reset hour - so the fallback works the
+    // wait out for itself rather than guessing at a day.
+    for (final body in <String>['not json', '{"error":{}}']) {
+      final message = aiRateLimitMessage(body).toLowerCase();
+
+      expect(message, contains('use it again in'));
+      expect(message, anyOf(contains('hour'), contains('minute'), contains('second')));
+      expect(message, isNot(contains('tomorrow')));
+    }
+  });
+
+  test('the wait never reads as a bare number or an empty span', () {
+    // A reset less than a minute away must still name a unit, and one exactly
+    // on the hour must not render as "6 hours 0 minutes".
+    final message = aiRateLimitMessage('not json');
+
+    expect(message, isNot(contains(' 0 ')));
+    expect(message, isNot(contains('in .')));
+    expect(message.trim(), endsWith('.'));
   });
 
   test('a blank server message falls back rather than showing nothing', () {
