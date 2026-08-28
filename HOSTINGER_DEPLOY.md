@@ -104,8 +104,15 @@ Open the site and confirm, in this order:
 7. **Offline check.** With the site already loaded once, open DevTools ->
    Network -> **Offline**, then reload. The app must still boot, and Home ->
    **Capstone Manual** must open and search normally, with an amber "You're
-   offline" strip at the top. If instead you get a maroon splash that never
-   finishes, `canvaskit/` did not upload - see the note below.
+   offline" strip at the top. Two different failures to tell apart:
+   - **A maroon splash that never finishes** - `canvaskit/` did not upload, see
+     the note below.
+   - **The browser's own "You're offline" error page**, never reaching the app -
+     the app shell is not cached under `/`. Check DevTools -> Application ->
+     Cache Storage -> `flutter-app-cache` for an entry ending in a bare `/`,
+     not only `/index.html`. `web/flutter_bootstrap.js` warms that entry once
+     the worker takes control (D22); if it is missing, the deployed build
+     predates that fix.
 
 ## 7. Later updates
 
