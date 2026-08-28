@@ -35,8 +35,7 @@ const _rememberedUserKey = 'loginRememberedUser';
 /// something wrong" but "can I get in". They cannot - the password is verified
 /// on the server - and the honest answer is more useful than a retry prompt.
 const String _offlineSignInMessage =
-    'You are offline, so you cannot sign in yet. Your password is checked on '
-    'the server, which needs an internet connection. Reconnect and try again.';
+    'You are offline, so you cannot sign in yet. Reconnect and try again.';
 
 /// Shared login screen for both admins and students.
 ///
@@ -278,8 +277,9 @@ class _LoginPageState extends State<LoginPage> {
                     prefixIcon: const Icon(Icons.lock_outline_rounded),
                     errorText: _passwordError,
                     suffixIcon: IconButton(
-                      tooltip:
-                          _hidePassword ? 'Show password' : 'Hide password',
+                      tooltip: _hidePassword
+                          ? 'Show password'
+                          : 'Hide password',
                       onPressed: () {
                         setState(() => _hidePassword = !_hidePassword);
                       },
@@ -317,7 +317,9 @@ class _LoginPageState extends State<LoginPage> {
                   onPressed: (_isLoading || _sendingReset)
                       ? null
                       : _showForgotPasswordDialog,
-                  child: Text(_sendingReset ? 'Sending...' : 'Forgot password?'),
+                  child: Text(
+                    _sendingReset ? 'Sending...' : 'Forgot password?',
+                  ),
                 ),
               ],
             ),
@@ -371,8 +373,9 @@ class _LoginPageState extends State<LoginPage> {
     final password = _passwordController.text;
 
     setState(() {
-      _usernameError =
-          identifier.isEmpty ? 'Enter your Student ID or email.' : null;
+      _usernameError = identifier.isEmpty
+          ? 'Enter your Student ID or email.'
+          : null;
       _passwordError = password.isEmpty ? 'Enter your password.' : null;
       _formError = null;
     });
@@ -522,7 +525,8 @@ class _LoginPageState extends State<LoginPage> {
       context: context,
       title: 'Forgot password',
       icon: Icons.help_outline_rounded,
-      message: 'Enter your Student ID or email and we will send a link to set '
+      message:
+          'Enter your Student ID or email and we will send a link to set '
           'a new password. You can also ask your administrator to reset it.',
       content: TextField(
         controller: controller,
@@ -842,26 +846,26 @@ class _MorphingSignInButton extends StatelessWidget {
                 duration: AppMotion.respect(context, AppMotion.quick),
                 child: switch (state) {
                   _SubmitState.idle => Text(
-                      'Sign in',
-                      key: const ValueKey<String>('idle'),
-                      style: AppTypography.labelLarge.copyWith(
-                        color: colors.onBrand,
-                      ),
+                    'Sign in',
+                    key: const ValueKey<String>('idle'),
+                    style: AppTypography.labelLarge.copyWith(
+                      color: colors.onBrand,
                     ),
+                  ),
                   _SubmitState.loading => SizedBox(
-                      key: const ValueKey<String>('loading'),
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: colors.onBrand,
-                      ),
+                    key: const ValueKey<String>('loading'),
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: colors.onBrand,
                     ),
+                  ),
                   _SubmitState.success => Icon(
-                      Icons.check_rounded,
-                      key: const ValueKey<String>('success'),
-                      color: colors.onColor,
-                    ),
+                    Icons.check_rounded,
+                    key: const ValueKey<String>('success'),
+                    color: colors.onColor,
+                  ),
                 },
               ),
             ),

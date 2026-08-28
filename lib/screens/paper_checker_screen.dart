@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/docx_layout_checker.dart';
 import '../services/paper_check_controller.dart';
+import '../services/paper_check_history_service.dart';
 import '../services/paper_checker_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -13,6 +14,7 @@ import '../widgets/app_scaffold.dart';
 import '../widgets/charts/score_dial.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/states/app_states.dart';
+import '../widgets/states/skeleton.dart';
 import 'auth_gate.dart';
 
 /// Paper Checker: uploads a capstone manuscript, extracts its text, and grades
@@ -34,6 +36,12 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
 
   // The file the user has picked but not yet checked (screen-local).
   PlatformFile? _selectedFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreLastCheck();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,6 +186,14 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
 
     if (running) return _buildRunningState();
 
+    // Reading the last saved check back after a restart. A skeleton rather
+    // than the "No check yet" empty state: telling a student they have no
+    // check and then replacing that with their result a moment later reads as
+    // the app having lost their work.
+    if (_controller.restoring && review == null) {
+      return const SkeletonList(count: 3, lines: 3);
+    }
+
     // A failed run only takes over the pane when there is nothing to keep
     // showing. With remarks still on screen it becomes a banner above them
     // instead, since replacing a completed check with an error message costs
@@ -213,6 +229,9 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         ] else if (_isShowingPreviousFile) ...<Widget>[
           _buildPreviousFileNote(),
           AppSpacing.vLg,
+        ] else if (_controller.restoredFrom != null) ...<Widget>[
+          _buildRestoredNote(_controller.restoredFrom!),
+          AppSpacing.vLg,
         ],
         if (_controller.reusedFrom != null) ...<Widget>[
           _buildReusedNote(_controller.reusedFrom!),
@@ -222,6 +241,11 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         AppSpacing.vLg,
         if (layout != null)
           StaggeredEntrance(index: 1, child: _buildLayoutCard(layout))
+        else if (_controller.restoredFrom?.hasLayout ?? false)
+          StaggeredEntrance(
+            index: 1,
+            child: _buildRestoredLayoutNote(_controller.restoredFrom!),
+          )
         else if (_controller.layoutSkipped)
           StaggeredEntrance(index: 1, child: _buildLayoutNote()),
         AppSpacing.vXl,
@@ -321,6 +345,34 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
         message: 'This manuscript is unchanged since it was checked on '
             '${_formatCheckedAt(checkedAt)}, so the same result is shown. '
             'Edit the paper and upload again for a fresh check.',
+      );
+
+  // Shown when the remarks were read back from the student's saved history
+  // after a restart, rather than produced in this session. Says which file
+  // they belong to and when it was graded, so a result that appears on a
+  // freshly opened checker is never mistaken for one just run.
+  Widget _buildRestoredNote(PaperCheckRecord record) {
+    final checkedAt = record.createdAt;
+    return _buildNote(
+      icon: Icons.history_rounded,
+      message: checkedAt == null
+          ? 'These remarks are from ${record.fileName}, your last completed '
+              'check. They stay here until you check another manuscript.'
+          : 'These remarks are from ${record.fileName}, checked on '
+              '${_formatCheckedAt(checkedAt)}. They stay here until you check '
+              'another manuscript.',
+    );
+  }
+
+  // A restored check keeps its formatting tally but not the individual rules -
+  // those were measured from a .docx the app no longer holds. Showing the
+  // count alone beats dropping the formatting section entirely, which would
+  // look like the check had stopped covering it.
+  Widget _buildRestoredLayoutNote(PaperCheckRecord record) => _buildNote(
+        icon: Icons.rule_rounded,
+        message: '${record.layoutPassCount} of ${record.layoutTotal} '
+            'formatting rules were met on that check. Upload the .docx again '
+            'to see each rule measured.',
       );
 
   // Shared chassis for the advisory lines that sit above a result.
@@ -726,6 +778,19 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
     // draft is not a reason to lose the notes you are working from.
     _controller.clearError();
     setState(() => _selectedFile = result.files.single);
+  }
+
+  // Puts the last saved check back on screen. A check's result lives in the
+  // shared controller, which a page reload throws away - so without this a
+  // student who closed the tab returned to an empty checker even though the
+  // check was already in their history. The controller decides whether there
+  // is anything to do; it never disturbs a result that is already here.
+  Future<void> _restoreLastCheck() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _controller.restoreLast(
+      groupId: prefs.getString(groupIdPrefsKey),
+      studentId: prefs.getString(studentIdPrefsKey),
+    );
   }
 
   Future<void> _runCheck() async {

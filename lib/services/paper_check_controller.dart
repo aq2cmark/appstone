@@ -23,14 +23,22 @@ class PaperCheckController extends ChangeNotifier {
   final _history = PaperCheckHistoryService();
 
   bool _running = false;
+  bool _restoring = false;
+  bool _restoreDone = false;
   String? _fileName;
   PaperReview? _review;
   LayoutReport? _layout;
   bool _layoutSkipped = false;
   String? _error;
   DateTime? _reusedFrom;
+  PaperCheckRecord? _restoredFrom;
+  // Which student the visible result belongs to, so one student's remarks are
+  // never left on screen for the next person to sign in on the same device.
+  String? _ownerStudentId;
 
   bool get running => _running;
+  // True while the last saved check is being fetched back after a restart.
+  bool get restoring => _restoring;
   String? get fileName => _fileName;
   PaperReview? get review => _review;
   LayoutReport? get layout => _layout;
@@ -39,6 +47,10 @@ class PaperCheckController extends ChangeNotifier {
   // Set when this result came from a previous check of identical content
   // rather than a fresh grading run. The screen uses it to say so.
   DateTime? get reusedFrom => _reusedFrom;
+  // The saved check this result was read back from, set only when the result
+  // was restored after a restart rather than produced in this session. The
+  // screen uses it to name the file and say when it was checked.
+  PaperCheckRecord? get restoredFrom => _restoredFrom;
   bool get hasResult => _review != null || _error != null;
 
   // Starts checking [file] in the background. Safe to call away from any screen;
@@ -54,6 +66,7 @@ class PaperCheckController extends ChangeNotifier {
     if (_running) return;
     _running = true;
     _error = null;
+    _ownerStudentId = studentId;
     notifyListeners();
 
     // The run builds its result in locals and only commits it once it has one.
@@ -118,6 +131,73 @@ class PaperCheckController extends ChangeNotifier {
     }
   }
 
+  // Puts the student's most recent completed check back on screen. The result
+  // of a check lives in this object, and closing the tab or restarting the app
+  // throws that away - so a student came back to an empty checker even though
+  // the check itself was already saved in their history. This reads that saved
+  // record back. Nothing new is stored: it is the same document the Check
+  // History screen already lists.
+  //
+  // Deliberately never overwrites a result that is already here. A check in
+  // flight, or one that finished in this session, is the newer truth - the
+  // saved record only fills the gap a restart leaves.
+  Future<void> restoreLast({String? groupId, String? studentId}) async {
+    // A different student has signed in on this device since the visible
+    // result was produced. Their predecessor's remarks are not theirs to read.
+    if (_ownerStudentId != null && _ownerStudentId != studentId) _clear();
+
+    if (_running || _restoring || _restoreDone || hasResult) return;
+    if (groupId == null || studentId == null) return;
+
+    _restoring = true;
+    notifyListeners();
+    try {
+      final last = await _history.fetchLatest(
+        groupId: groupId,
+        studentId: studentId,
+      );
+      // Only a completed lookup counts as done. A failed one leaves the flag
+      // clear so the next visit to the screen tries again.
+      _restoreDone = true;
+      if (last != null) {
+        _ownerStudentId = studentId;
+        _commit(
+          fileName: last.fileName,
+          review: _reviewFromRecord(last),
+          // A saved check keeps the formatting tally but not the individual
+          // rules, which were measured from a file we no longer hold. The
+          // screen shows the tally and says where to get the detail back.
+          layout: null,
+          layoutSkipped: false,
+          restoredFrom: last,
+        );
+      }
+    } catch (_) {
+      // Offline, or history unreadable. Having nothing to restore is not an
+      // error worth showing: the student simply gets the empty checker they
+      // would have had anyway, and can run a fresh check.
+    } finally {
+      _restoring = false;
+      notifyListeners();
+    }
+  }
+
+  // Wipes the visible result outright. Only for when it stops being the
+  // current student's to see - a finished check is otherwise kept until a new
+  // one replaces it.
+  void _clear() {
+    _fileName = null;
+    _review = null;
+    _layout = null;
+    _layoutSkipped = false;
+    _error = null;
+    _reusedFrom = null;
+    _restoredFrom = null;
+    _ownerStudentId = null;
+    _restoreDone = false;
+    notifyListeners();
+  }
+
   // Replaces the visible result with a finished one, in a single step so the
   // fields are never a mix of two different checks.
   void _commit({
@@ -126,12 +206,14 @@ class PaperCheckController extends ChangeNotifier {
     required LayoutReport? layout,
     required bool layoutSkipped,
     DateTime? reusedFrom,
+    PaperCheckRecord? restoredFrom,
   }) {
     _fileName = fileName;
     _review = review;
     _layout = layout;
     _layoutSkipped = layoutSkipped;
     _reusedFrom = reusedFrom;
+    _restoredFrom = restoredFrom;
   }
 
   // Best-effort write to paper check history. Needs a completed review and a

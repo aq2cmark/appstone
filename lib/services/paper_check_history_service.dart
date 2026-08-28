@@ -178,6 +178,18 @@ class PaperCheckHistoryService {
     return records.first;
   }
 
+  // The student's most recent check, or null if they have never run one.
+  // Used to put the last result back on the Paper Checker after a restart:
+  // the on-screen result lives in memory, which a page reload throws away,
+  // even though the check itself is already saved here.
+  Future<PaperCheckRecord?> fetchLatest({
+    required String groupId,
+    required String studentId,
+  }) async {
+    final records = await fetchChecks(groupId: groupId, studentId: studentId);
+    return records.isEmpty ? null : records.first;
+  }
+
   // All checks for one student, newest first. Uses equality filters only (no
   // orderBy) so Firestore needs no composite index; sorting happens here.
   Future<List<PaperCheckRecord>> fetchChecks({
