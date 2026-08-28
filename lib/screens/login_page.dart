@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show TextInput;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/admin_repository.dart';
+import '../services/connectivity.dart';
 import '../services/friendly_error.dart';
 import '../services/functions_service.dart';
 import '../services/session_cache.dart';
@@ -14,6 +15,7 @@ import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_motion_widgets.dart';
+import '../widgets/offline_notice.dart';
 import '../widgets/theme_toggle_button.dart';
 import '../widgets/appstone_logo.dart';
 import '../widgets/states/app_states.dart';
@@ -25,6 +27,16 @@ import 'dashboard_screen.dart';
 // own password manager handles that securely via autofill.
 const _rememberMeKey = 'loginRememberMe';
 const _rememberedUserKey = 'loginRememberedUser';
+
+/// Shown when a sign-in is attempted with no connection.
+///
+/// Distinct from the generic offline line in `friendly_error.dart` because it
+/// has to answer the question a student actually has at this screen: not "is
+/// something wrong" but "can I get in". They cannot - the password is verified
+/// on the server - and the honest answer is more useful than a retry prompt.
+const String _offlineSignInMessage =
+    'You are offline, so you cannot sign in yet. Your password is checked on '
+    'the server, which needs an internet connection. Reconnect and try again.';
 
 /// Shared login screen for both admins and students.
 ///
@@ -204,6 +216,14 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
           AppSpacing.vXl,
+          // Signing in is the one thing Appstone genuinely cannot do offline,
+          // so say it before the attempt rather than after a failed request.
+          const OfflineNotice(
+            message:
+                'Signing in needs an internet connection. Once you have '
+                'signed in on this device, the Capstone Manual stays '
+                'readable offline.',
+          ),
           if (_formError != null) ...<Widget>[
             _FormBanner(
               message: _formError!,
@@ -358,6 +378,17 @@ class _LoginPageState extends State<LoginPage> {
     });
     if (identifier.isEmpty || password.isEmpty) return;
 
+    // Offline, the attempt can only fail: the password is verified by Firebase
+    // Auth and the account is routed from Firestore. Saying so now costs
+    // nothing, where letting it run means waiting out a network timeout first.
+    // The browser can still be wrong about this - connected to wifi that has
+    // no route out reports as online - so the failure paths below classify the
+    // error as well rather than relying on this check alone.
+    if (!isOnline) {
+      setState(() => _formError = _offlineSignInMessage);
+      return;
+    }
+
     setState(() => _submitState = _SubmitState.loading);
 
     try {
@@ -377,9 +408,24 @@ class _LoginPageState extends State<LoginPage> {
       final UserCredential credential;
       try {
         credential = await _repo.signInAdmin(email: email, password: password);
-      } on FirebaseAuthException {
+      } on FirebaseAuthException catch (error) {
         if (!mounted) return;
-        setState(() => _passwordError = 'That password does not match.');
+        // This used to report every auth failure as a wrong password, which
+        // was actively misleading offline: `network-request-failed` means the
+        // password was never checked at all. Only the credential codes are a
+        // statement about what was typed; everything else is a condition of
+        // the account or the connection, and belongs in the form banner.
+        setState(() {
+          if (isOfflineError(error)) {
+            _formError = _offlineSignInMessage;
+          } else if (error.code == 'invalid-credential' ||
+              error.code == 'wrong-password' ||
+              error.code == 'user-not-found') {
+            _passwordError = 'That password does not match.';
+          } else {
+            _formError = friendlyErrorMessage(error);
+          }
+        });
         return;
       }
       final user = credential.user;
@@ -447,7 +493,17 @@ class _LoginPageState extends State<LoginPage> {
         () => _formError = 'This account is not authorized to sign in here.',
       );
     } catch (error) {
-      if (mounted) setState(() => _formError = friendlyErrorMessage(error));
+      if (mounted) {
+        setState(
+          () => _formError = isOfflineError(error)
+              // Reached when the connection drops mid-attempt, or when the
+              // Student ID -> email lookup fails: that is a Firestore read, and
+              // its generic 'server is unreachable' line does not tell a
+              // student that signing in is what needs the network.
+              ? _offlineSignInMessage
+              : friendlyErrorMessage(error),
+        );
+      }
     } finally {
       // Leave a success state on screen; it is navigating away. Resetting here
       // would flash the button back to its label mid-transition.
