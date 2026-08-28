@@ -53,13 +53,17 @@ class PaperCheckController extends ChangeNotifier {
   }) async {
     if (_running) return;
     _running = true;
-    _fileName = file.name;
-    _review = null;
-    _layout = null;
-    _layoutSkipped = false;
     _error = null;
-    _reusedFrom = null;
     notifyListeners();
+
+    // The run builds its result in locals and only commits it once it has one.
+    // The previous check's fields are left standing until then, so a run that
+    // fails - an exhausted daily allowance, a file that will not parse - leaves
+    // the student the remarks they already had instead of clearing the screen
+    // in exchange for an error. Nothing stale is on show meanwhile: the screen
+    // renders its running state while `_running` is true.
+    LayoutReport? layout;
+    var layoutSkipped = false;
 
     try {
       // Deterministic .docx-only layout check first; kept even if the AI check
@@ -68,17 +72,16 @@ class PaperCheckController extends ChangeNotifier {
       final isDocx = (file.extension ?? '').toLowerCase() == 'docx';
       if (isDocx && bytes != null) {
         try {
-          _layout = _layoutChecker.check(bytes);
+          layout = _layoutChecker.check(bytes);
         } catch (_) {
-          _layoutSkipped = true;
+          layoutSkipped = true;
         }
       } else {
-        _layoutSkipped = true;
+        layoutSkipped = true;
       }
-      notifyListeners();
 
       final text = await _extractor.extract(file);
-      final hash = _contentHash(text, _layout);
+      final hash = _contentHash(text, layout);
 
       // Identical content was already graded, so reuse that verdict instead of
       // asking the model again. This is what makes the same manuscript score
@@ -87,12 +90,22 @@ class PaperCheckController extends ChangeNotifier {
       // also costs the student nothing against the daily AI allowance.
       final previous = await _findPrevious(hash, groupId, studentId);
       if (previous != null) {
-        _review = _reviewFromRecord(previous);
-        _reusedFrom = previous.createdAt;
+        _commit(
+          fileName: file.name,
+          review: _reviewFromRecord(previous),
+          layout: layout,
+          layoutSkipped: layoutSkipped,
+          reusedFrom: previous.createdAt,
+        );
         return;
       }
 
-      _review = await _service.checkPaper(paperText: text, layout: _layout);
+      _commit(
+        fileName: file.name,
+        review: await _service.checkPaper(paperText: text, layout: layout),
+        layout: layout,
+        layoutSkipped: layoutSkipped,
+      );
       // Log this finished check so the student can compare it against earlier
       // ones. Kept inside the try (only successful checks are worth saving) but
       // self-contained so a history failure never becomes a check error.
@@ -103,6 +116,22 @@ class PaperCheckController extends ChangeNotifier {
       _running = false;
       notifyListeners();
     }
+  }
+
+  // Replaces the visible result with a finished one, in a single step so the
+  // fields are never a mix of two different checks.
+  void _commit({
+    required String fileName,
+    required PaperReview review,
+    required LayoutReport? layout,
+    required bool layoutSkipped,
+    DateTime? reusedFrom,
+  }) {
+    _fileName = fileName;
+    _review = review;
+    _layout = layout;
+    _layoutSkipped = layoutSkipped;
+    _reusedFrom = reusedFrom;
   }
 
   // Best-effort write to paper check history. Needs a completed review and a
@@ -204,16 +233,25 @@ class PaperCheckController extends ChangeNotifier {
     );
   }
 
-  // Clears the last result (e.g. when a new file is picked). No-op while a check
-  // is still running.
-  void reset() {
-    if (_running) return;
-    _fileName = null;
-    _review = null;
-    _layout = null;
-    _layoutSkipped = false;
+  // Drops a failed check while leaving a completed one alone. Called when a new
+  // file is picked.
+  //
+  // Picking a file used to clear the whole result, which threw away the remarks
+  // the student came here for the moment they reached for their next draft -
+  // before the new check had even started, and whether or not it ever ran. A
+  // finished review is the product of this screen and now survives until a new
+  // check replaces it in start(). An error is not: it describes an attempt that
+  // has been moved on from, and leaving it up would make the screen look broken
+  // next to a freshly chosen file.
+  //
+  // `_fileName` is deliberately left alone: it now names the check whose remarks
+  // are still on screen, not the attempt that failed, and clearing it would
+  // leave those remarks unlabelled.
+  //
+  // No-op while a check is still running.
+  void clearError() {
+    if (_running || _error == null) return;
     _error = null;
-    _reusedFrom = null;
     notifyListeners();
   }
 

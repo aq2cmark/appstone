@@ -178,7 +178,11 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
 
     if (running) return _buildRunningState();
 
-    if (error != null) {
+    // A failed run only takes over the pane when there is nothing to keep
+    // showing. With remarks still on screen it becomes a banner above them
+    // instead, since replacing a completed check with an error message costs
+    // the student the notes they were working from.
+    if (error != null && review == null) {
       return AppErrorView(
         message: error,
         title: 'Could not check this paper',
@@ -200,6 +204,16 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        // The results outlive the file that produced them now, so whenever the
+        // student has selected a different one they are told what they are
+        // reading rather than left to assume it graded the new draft.
+        if (error != null) ...<Widget>[
+          _buildFailedRunNote(error),
+          AppSpacing.vLg,
+        ] else if (_isShowingPreviousFile) ...<Widget>[
+          _buildPreviousFileNote(),
+          AppSpacing.vLg,
+        ],
         if (_controller.reusedFrom != null) ...<Widget>[
           _buildReusedNote(_controller.reusedFrom!),
           AppSpacing.vLg,
@@ -272,24 +286,71 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
   // Shown when the score came from an earlier check of identical content.
   // Without this the student would wonder why the check finished instantly -
   // and would have no way to tell a reused verdict from a fresh one.
-  Widget _buildReusedNote(DateTime checkedAt) {
+  // True when the remarks on screen were produced by a file other than the one
+  // now selected. Both sides must be present: leaving this screen and coming
+  // back rebuilds it with no selection, and that is not a mismatch - it is
+  // simply the last check the student ran.
+  bool get _isShowingPreviousFile {
+    final selected = _selectedFile?.name;
+    final graded = _controller.fileName;
+    return selected != null && graded != null && selected != graded;
+  }
+
+  Widget _buildFailedRunNote(String error) {
+    final colors = AppColors.of(context);
+    final graded = _controller.fileName;
+    return _buildNote(
+      icon: Icons.error_outline_rounded,
+      background: colors.dangerTint,
+      accent: colors.danger,
+      message: graded == null
+          ? '$error The remarks below are from your last completed check.'
+          : '$error The remarks below are from $graded, your last completed '
+              'check.',
+    );
+  }
+
+  Widget _buildPreviousFileNote() => _buildNote(
+        icon: Icons.description_outlined,
+        message: 'These remarks are from ${_controller.fileName}. They stay '
+            'here until you run the check on ${_selectedFile!.name}.',
+      );
+
+  Widget _buildReusedNote(DateTime checkedAt) => _buildNote(
+        icon: Icons.history_rounded,
+        message: 'This manuscript is unchanged since it was checked on '
+            '${_formatCheckedAt(checkedAt)}, so the same result is shown. '
+            'Edit the paper and upload again for a fresh check.',
+      );
+
+  // Shared chassis for the advisory lines that sit above a result.
+  Widget _buildNote({
+    required IconData icon,
+    required String message,
+    Color? background,
+    Color? accent,
+  }) {
     final colors = AppColors.of(context);
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: colors.surfaceSunken,
+        color: background ?? colors.surfaceSunken,
         borderRadius: AppRadius.mdAll,
-        border: Border.all(color: colors.divider),
+        border: Border.all(
+          color: accent == null ? colors.divider : colors.tintBorder(accent),
+        ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.history_rounded, size: 18, color: colors.textTertiary),
+          Icon(icon, size: AppSize.iconSm, color: accent ?? colors.textTertiary),
           AppSpacing.hMd,
           Expanded(
             child: Text(
-              'This manuscript is unchanged since it was checked on '
-              '${_formatCheckedAt(checkedAt)}, so the same result is shown. '
-              'Edit the paper and upload again for a fresh check.',
+              message,
+              // These carry file names, which are user data and can be long.
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
               style: AppTypography.bodySmall.copyWith(
                 color: colors.textSecondary,
               ),
@@ -660,7 +721,10 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
-    _controller.reset(); // clear any previous result for the newly picked file
+    // Only a failed attempt is dropped here. The remarks from a finished check
+    // stay on screen until a new check replaces them - reaching for the next
+    // draft is not a reason to lose the notes you are working from.
+    _controller.clearError();
     setState(() => _selectedFile = result.files.single);
   }
 
