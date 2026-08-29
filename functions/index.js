@@ -213,15 +213,16 @@ const FALLBACK_UPSTREAM = {
 };
 
 // The model to ask the stand-in for. Kept in step with the app's own choices:
-// `mistral-large` in defense_ai_service / paper_checker_service / workflow_service,
-// `openai/gpt-oss-20b` in title_generator_service.
+// `agnes-2.0-flash` in defense_ai_service / paper_checker_service / workflow_service
+// (Mistral Large is down; routed to Agnes 2.0 Flash on NaraRouter until it
+// recovers), `openai/gpt-oss-20b` in title_generator_service.
 const FALLBACK_MODEL = {
-  nararouter: 'mistral-large',
+  nararouter: 'agnes-2.0-flash',
   groq: 'openai/gpt-oss-20b',
 };
 
 // Parameters only one provider understands, dropped on the way to the other.
-// The title generator sends gpt-oss's `reasoning_effort`; Mistral has no notion
+// The title generator sends gpt-oss's `reasoning_effort`; NaraRouter has no notion
 // of it, and a strict gateway rejects the whole request over one unknown field.
 const PROVIDER_ONLY_FIELDS = {
   groq: ['reasoning_effort'],

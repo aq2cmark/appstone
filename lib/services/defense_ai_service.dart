@@ -53,7 +53,8 @@ class DefenseScore {
 // browser (no CORS, and their docs require server-side-only key usage), so
 // this proxy is required, not optional.
 class DefenseAiService {
-  static const _model = 'mistral-large';
+  // Mistral Large is down; routed to Agnes 2.0 Flash on NaraRouter until it recovers.
+  static const _model = 'agnes-2.0-flash';
 
   // One id for this whole practice session (this service is created once per
   // session), so all of its AI calls count as a SINGLE session against the cap.

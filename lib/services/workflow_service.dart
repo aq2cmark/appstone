@@ -22,7 +22,8 @@ class WorkflowGeneration {
 // Calls our /api/nararouter Vercel function (forwards to NaraRouter with the
 // key server-side), same as the app's other AI features.
 class WorkflowService {
-  static const _model = 'mistral-large';
+  // Mistral Large is down; routed to Agnes 2.0 Flash on NaraRouter until it recovers.
+  static const _model = 'agnes-2.0-flash';
 
   Future<WorkflowGeneration> generate({
     required String paperText,
