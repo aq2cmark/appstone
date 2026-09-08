@@ -126,8 +126,8 @@ class PaperReview {
 // /api/nararouter Vercel function, which forwards to NaraRouter (an
 // OpenAI-compatible gateway) with the API key attached server-side.
 class PaperCheckerService {
-  // Mistral Large is down; routed to Agnes 2.0 Flash on NaraRouter until it recovers.
-  static const _model = 'agnes-2.0-flash';
+  // Mistral Large is down; routed to Agnes 2.5 Flash on NaraRouter until it recovers.
+  static const _model = 'agnes-2.5-flash';
 
   // [layout] is the deterministic .docx measurement the controller already
   // ran. Passing it in matters: the extracted text has no fonts, margins or

@@ -213,11 +213,11 @@ const FALLBACK_UPSTREAM = {
 };
 
 // The model to ask the stand-in for. Kept in step with the app's own choices:
-// `agnes-2.0-flash` in defense_ai_service / paper_checker_service / workflow_service
-// (Mistral Large is down; routed to Agnes 2.0 Flash on NaraRouter until it
+// `agnes-2.5-flash` in defense_ai_service / paper_checker_service / workflow_service
+// (Mistral Large is down; routed to Agnes 2.5 Flash on NaraRouter until it
 // recovers), `openai/gpt-oss-20b` in title_generator_service.
 const FALLBACK_MODEL = {
-  nararouter: 'agnes-2.0-flash',
+  nararouter: 'agnes-2.5-flash',
   groq: 'openai/gpt-oss-20b',
 };
 
