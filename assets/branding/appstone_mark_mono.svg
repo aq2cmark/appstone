@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Appstone">
+  <!-- Single-colour Appstone mark (no tile) for stamps, watermarks, and
+       favicons. Uses currentColor so it can be tinted in CSS/Flutter; opened on
+       its own it falls back to the brand maroon. -->
+  <g fill="none" stroke="currentColor" color="#8B1A1A"
+     stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M236 132 H276 L360 388 M236 132 L152 388"/>
+    <path d="M190 300 H322"/>
+  </g>
+</svg>

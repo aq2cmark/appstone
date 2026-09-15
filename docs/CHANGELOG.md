@@ -1,0 +1,225 @@
+# CHANGELOG — Frontend Overhaul
+
+Quick-scan list of what changed and why, in the order it happened. For full detail (paper section mapping, defect IDs, exact tokens) see [`PAPER_DELTA.md`](PAPER_DELTA.md) — this file is the short version so we don't lose track mid-work.
+
+**Legend:** ✅ done · 🔄 in progress · ⬜ queued
+
+---
+
+## Phase 0 — Docs
+- ✅ `CLAUDE.md` — architecture map, design-system rules, hard constraints for future sessions
+- ✅ `docs/PAPER_DELTA.md` — tracks every deviation from `NEW APPSTONE.docx`
+
+## Phase 1 — Design system foundation
+- ✅ `lib/theme/` — colors, typography (Plus Jakarta Sans, bundled), spacing, breakpoints, motion, light+dark `ThemeData`
+- ✅ Shared widgets — `AppScaffold`, `AppSection`, `AppTwoColumn`, loading/error/empty states, skeletons, `AppDialog`, chart primitives (score dial, radar, progress ring)
+- ✅ `google_fonts`, `flutter_animate`, `fl_chart` added
+
+## Phase 2 — Navigation shell + Home
+- ✅ `AppShell` — adaptive nav (bottom bar / rail / extended rail)
+- ✅ Home rebuilt — progress band, workflow preview, continue-card, feature grid recolored with real module accents
+- ✅ Premium upsell screen (replaces the old snackbar)
+
+## Phase 3 — Student screens
+- ✅ Login — split branded layout, inline field errors
+- ✅ Defense Practice, Defense Results (score dial + radar + rank badge), Defense Session (two-column, timer ring)
+- ✅ Paper Checker — two-column layout
+- ⛔ PDF export was built here, then **removed at your request** — see "Reverted" below
+- ✅ Manual, Title Generator, AI Workflow, Defense Context, both history screens — **colours + entrance motion only; layout/structure/copy untouched per your instruction** (the Manual later got a full reading treatment, which you approved separately)
+
+### Fixes along the way
+- ✅ **Dark mode, properly** — all 13 remaining screens moved off the legacy `lib/app_colors.dart` (deleted) onto brightness-aware tokens. 118 refs remapped, hardcoded light tints replaced, `Colors.green/orange` → `success`/`warning` tokens
+- ✅ **Nav reordered & trimmed** — `Home → Manual → Practice → Workflow → Checker`. Progress tab removed (history still reachable from the Practice/Checker app bars)
+- ✅ **Theme toggle on every screen**, not just Home/Login
+- ✅ **Neutral app bars** (maroon = brand/buttons only, not headers) + accent line under each
+- ✅ **Flat cards with hairline borders** (shadows are invisible in dark mode)
+- ✅ **Shared-axis page transitions**, theme-switch crossfade
+- ✅ **Rounded icon set** standardized app-wide (~140 icons)
+- ✅ **Fixed dead-end navigation bug** — opening a module from a Home card used to push it *over* the shell (bottom bar vanished, no back button). Now Home cards switch shell tabs directly via `AppShellScope`; genuinely-pushed screens (Title Generator, sessions, history) get their back button automatically
+
+## Phase 4 — Admin portal
+See the detailed entry at the end of this file.
+
+## Phase 5 — Platform / polish
+- ✅ Viewport meta tag, theme-color, real description in `web/index.html`
+- ✅ Removed the floating PWA install button
+- ✅ Branded loading splash + manifest fixes — see the detailed Phase 5 entry at the end of this file
+
+## Animation / polish pass
+- ✅ **Staggered entrance** extended to Manual, AI Workflow (setup + plan), Defense Context, Session History, Paper Check History. Deliberately *coarse* — 2–3 groups per screen, not one step per card, so a 15-phase plan or a long history list doesn't take a full second to finish arriving, and re-filtering doesn't replay the chain
+- ✅ **Progress bars sweep to value** — new `AnimatedProgressBar` in `app_motion_widgets.dart`, wired into AI Workflow completion, Paper Checker rubric rows, and the defense question tracker
+- ✅ **Press feedback** on Home feature cards — added to `_HoverLift` via `Listener` (not `GestureDetector`, which would fight the `InkWell` for the tap and kill the ripple)
+- ✅ **Empty-state gentle motion** — icon drifts on a 4s cycle. Applied to *empty* states only; error states stay still on purpose, since a floating error icon reads as playful
+- ✅ **Branded pull-to-refresh** — Home indicator now uses brand colours (see caveat below)
+
+### Already animating before this pass (verified, no work needed)
+- `ScoreDial` — arc **and** number both count up (defense results, paper checker)
+- `ProgressRing`, `MetricBar` — already tween to value
+- `NavigationBar` indicator — Material 3 animates the pill natively
+
+## Defects found and fixed during self-audit
+- ✅ **Shell pre-built all premium upsells at launch** for free users — 3 extra widget trees built before they were ever opened, and their entrance animations played invisibly, so the animation was already over by the time the tab was tapped
+- ✅ **Animations ran in background tabs** — `IndexedStack` keeps every visited destination alive and does *not* pause tickers. A shimmering skeleton or breathing empty state in a background tab animated forever. Wrapped destinations in `TickerMode(enabled: i == _index)`
+- ✅ **Theme crossfade was half-broken** (my own earlier bug) — `AnimatedTheme` lerped Material's colours, but `AppColors` read theme *brightness*, which flips at t=0.5. Backgrounds faded while text/accents snapped mid-fade. Fixed properly: `AppColors` is now a `ThemeExtension`, which `ThemeData.lerp` interpolates automatically, so every token fades together. `of()` keeps a brightness fallback so the bare-`MaterialApp` widget tests still pass
+- ✅ **Accent line was on only 4 of 12 screens** — it appeared and disappeared while tab-switching. Extracted `appBarAccent()` and applied it everywhere
+
+## Capstone Manual — reading treatment
+- ✅ Body 17px / line-height 1.7, measure narrowed 760 → **660px** (~68 chars)
+- ✅ Lead paragraph renders larger to give the eye an entry point
+- ✅ Bullets: one card with accent markers, replacing one-`Card`-per-item (an 8-point list was 8 stacked boxes)
+- ✅ **A- / A+ text size control**, 4 steps, persisted (`manual_text_scale_v1`). Scoped to the manual only — raising it does not stretch the nav bar or admin tables
+- ✅ **Reading progress bar** doubling as the module accent line
+- ✅ **Requirement callouts** — items stating an obligation get a tinted block. Matched on wording the manual already uses (`must`, `required`, `shall`, `not allowed`, `mandatory`); anything unmatched renders as a normal bullet, so emphasis changes but never meaning
+
+## Contrast / WCAG AA audit
+Measured with a real contrast script (kept at `tool/contrast_audit.dart` — re-run it after any palette change):
+
+```bash
+dart tool/contrast_audit.dart
+```
+
+**Result: both themes now pass AA (4.5:1) on every text/surface pair.** Failures found and fixed:
+
+| Pair | Was | Now |
+|---|---|---|
+| `textTertiary` on background (light) | **2.83** ✗ | 4.65 |
+| `textTertiary` on surface (dark) | 3.82 ✗ | 5.09 |
+| white on `brand` fill (dark) — *every primary button label* | 3.55 ✗ | 5.07 |
+| white on `premium` fill (dark) | **1.91** ✗ | 6.4+ |
+| white on `success` / `warning` / `info` fill (dark) | 1.74 – 2.32 ✗ | all pass |
+| `warning`, `premium`, `moduleTitleGen` on surface (light) | 4.06 – 4.34 ✗ | 4.9 – 5.4 |
+| `success` / `premium` on their tints (light) | 4.43 ✗ | 4.52 / 4.55 |
+
+**Root cause of the worst ones:** `onColor` and `onBrand` were white in *both* themes, but dark-theme accents are deliberately light colours — so white-on-accent was unreadable. Dark theme now uses dark ink on filled accents, which is also what Material 3 prescribes.
+
+**New token: `onBrandStrong`** (white in both themes). Needed because `brandStrong` is a deep maroon in both themes, so the app-bar brand marks and rail logo still need white — flipping `onBrand` to dark ink alone would have broken them.
+
+**Login brand panel** now pins to the light palette's maroons in both themes. Following the theme made its gradient run to a pale salmon in dark mode, where neither white nor dark ink cleared AA across the whole sweep.
+
+## Reverted
+- ✅ **PDF export removed entirely** (Defense Results *and* Paper Checker) at your request. `lib/services/report_printer.dart` deleted — `pdf`/`printing` are back to their original single use, the admin credential roster in `credentials_printer.dart`. No other behaviour touched.
+
+## Hero transitions — not built, and why
+Hero was dropped after analysis, not attempted and abandoned. Two blockers:
+
+1. Home cards now **switch tabs** rather than push a route. Hero flights are driven by Navigator route transitions, so a tab switch produces no animation at all.
+2. Home and the module screens are alive **simultaneously** inside the `IndexedStack`. A shared Hero tag would place two matching heroes in one route, tripping Flutter's duplicate-tag assertion and crashing on the *next* route push.
+
+Replaced with **`_ModuleTransition`** — a short scale-and-fade when a destination becomes active. Same "the module opened" read, with no Navigator dependency, no tag matching, and no crash surface. Only fires on the inactive→active edge, so re-tapping the current tab does nothing, and it never rebuilds the child, so kept-alive tab state survives.
+
+## Also this pass
+- ✅ **Scroll-linked app bar** — implemented for real. The previous code *claimed* a scrolled-under effect in a comment but had `scrolledUnderElevation: flat` and a transparent shadow, so nothing happened. Now uses a brand surface tint (colour, not shadow — shadows are near-invisible on dark).
+- ✅ **Skeleton → content crossfade** on the Home progress band, with a `layoutBuilder` so the differing heights don't make the section jump mid-fade.
+
+## Still queued
+- ⬜ **Icon rule, written down** — rounded = active/primary, outlined = idle/secondary. Decided, and the code already broadly follows it; what is missing is the rule recorded in `CLAUDE.md` plus a few spot fixes, so it does not drift back.
+- ⬜ **Custom pull-to-refresh** drawing the Appstone mark. `RefreshIndicator` takes no child widget, so this means replacing it with a custom sliver - more work than the polish is worth unless you want it.
+- ⬜ **Debug-build overflow sweep** — see the limitation noted under Phase 5.
+
+### Scope notes / judgement calls
+- **Title Generator was left out of the stagger sweep.** Its chip layout is hand-measured with a `TextPainter` and guarded by 4 widget tests where an overflow fails the build. Not worth the risk for an entrance animation.
+- **Admin screens untouched**, per your instruction to leave them as-is. That also means the "admin stat cards" half of the animated-counters pick is off the table.
+- **Animated counters:** the scores you'd actually notice (`ScoreDial`) already counted up before this pass, so there was nothing left to wire once admin was excluded.
+- **Pull-to-refresh** is branded by colour only. `RefreshIndicator` takes no child widget, so drawing the Appstone mark means replacing it with a custom sliver — a real change to scroll behaviour, not polish. Left queued rather than rushed.
+
+---
+
+## Verification status (as of last check)
+```
+flutter analyze   → clean (2 pre-existing deprecations in admin_portal_page.dart, unrelated to this work)
+flutter test      → 65/65 passing
+flutter build web --release → succeeds
+```
+
+## Known open item
+I have not been able to visually verify any of this — the Browser pane isn't rendering screenshots in this environment. Everything above is verified structurally (analyzer/tests/build) but **not seen**. Please keep sending screenshots when something looks wrong; that's the only way I catch it.
+
+---
+
+## Desktop density pass
+- ✅ `pagePadding` gains a `large` step (40px); **vertical** padding deliberately stops growing past medium (24px) — a 1440×900 laptop is wide and *short*, so a matching vertical gutter just pushes content below the fold
+- ✅ `AppScaffold` bottom gap now only reserves bottom-nav clearance where a bottom nav actually exists (phones), instead of leaving dead space under the rail layout
+- ✅ The `maxWidth: 760` literal — previously copy-pasted across 6 screens — now resolves through `AppContentWidth.reading`, so the measure is centralised
+
+## Phase 4 — Admin portal
+- ✅ **Student table → stacked cards below 600px.** The six-column `DataTable` could only be read on a phone by dragging sideways, which meant the *actions* column — the reason an admin opens the screen — was off-screen by default. Same data, same actions, no horizontal scrolling.
+- ✅ **Search** across groups and students (name, email, Student ID). Matching a student surfaces the group they're in, since that's where every action on them lives. The stat cards keep counting the whole roster while a search is active — they summarise the department, not the filter.
+- ✅ **Two overflowing dialogs fixed** — Edit Student and Invite Admin both had two fields plus a keyboard inside a non-scrolling `AlertDialog` (defect D3 from the original audit).
+
+**Safety:** the three student action handlers (`editStudent`, `resetStudentPassword`, `deleteStudent`) were *extracted* into one shared `_studentActions()` used by both layouts, not duplicated — so the table and card layouts can't drift apart. Verified by diff that no backend call, Cloud Function, or repository method was changed or removed.
+
+## Phase 5 — Platform
+- ✅ **Branded boot splash** (`web/index.html`). The ~26 MB bundle previously showed a blank white page for seconds on campus wifi. Plain HTML/CSS so it paints before `main.dart.js` parses; the mark is inline SVG using the *same* 512×512 geometry as `appstone_logo.svg` and the in-app painter, so splash and app show an identical logo. Dismissed on Flutter's `flutter-first-frame` event, with a 20 s failsafe so an engine error can't strand the user on a maroon screen.
+- ✅ **Manifest fixed** — `orientation` `portrait-primary` → `any` (it was locking tablets and installed desktop PWAs to portrait), and the "A new Flutter project." description replaced.
+- ✅ `tool/serve_build.dart` + `.claude/launch.json` — serves the release bundle locally so the built output can actually be opened and checked.
+
+### Bug found *by* the splash work
+Setting `html, body { background-color: #8B1A1A }` for the splash left the page maroon permanently — visible wherever Flutter's canvas doesn't paint, most obviously as a maroon flash when over-scrolling on a phone. The dismiss handler now adds an `app-booted` class that hands the background back to Flutter. **Verified in-browser:** after boot, `html` and `body` computed background are both `rgba(0,0,0,0)`.
+
+### Responsive verification (first time anything was actually observed)
+A local server finally made in-browser checks possible. At **320 / 768 / 1920 px**, reloading at each size: Flutter's view matches the viewport exactly, there is **no horizontal document overflow**, the splash dismisses, and the console is **error-free**.
+
+⚠️ **Limitation worth knowing:** this is a *release* build, and Flutter only asserts `RenderFlex overflowed` in debug. So this sweep proves the page doesn't scroll sideways and doesn't error — it does **not** prove no widget overflows internally. A debug-build pass, or your own eyes on a real phone, is still the way to catch those.
+
+---
+
+## Admin portal overhaul (full)
+
+**Approach:** same design system as the student side, own accent. Admin keeps a persistent sidebar (correct model for a back office) rather than adopting the student tab bar.
+
+- ✅ **New tokens `admin` / `adminSoft`** — slate blue (`#3F5068` light, `#9FB3D1` dark). Deliberately outside the module palette: it marks "staff side", not "a feature". Every admin pair measured **7.1:1 – 8.8:1**.
+- ✅ **Sidebar rebuilt** — surface panel with a brand-tinted active item, replacing the solid maroon slab.
+- ✅ **Header rebuilt** — neutral surface + admin accent line + **theme toggle** (admin was the only area without one). `SectionHeader` became orphaned and was deleted.
+- ✅ **Collapsible groups**, expanded by default.
+- ✅ **Credential handoff** — the registration result is now a proper panel: monospaced Student ID and password, copy button on each, "Copy all", and an explicit warning that the temp password can't be shown again. New `widgets/credential_value.dart`.
+- ✅ **Copy button on temp passwords** in the student table/cards, rendered monospaced so `0`/`O` and `1`/`l` are distinguishable.
+- ✅ **Audit log** — grouped under Today / Yesterday / date headings with category filter chips carrying counts. Rows show time only, since the date is in the heading.
+- ✅ **States** — `AppErrorView` + skeletons replacing raw `snapshot.error` text and bare spinners across the portal, admins page, audit log and import.
+- ✅ **Stale copy fixed** — the Admins page told owners to use an *"Invited as an admin? Create your account"* screen that no longer exists (a known issue in `CLAUDE.md`). Rewritten to describe the actual flow: the account is created for them and they get a set-password link.
+
+### Second contrast failure found — same root cause
+The audit had only tested text-on-surface pairs, so it missed **coloured slabs**. Both the sidebar *and* every group-card header painted `colors.brand` with hardcoded white text — **3.55:1 in dark mode**, below AA. Both now use `adminSoft` with themed text. `tool/contrast_audit.dart` was extended to cover `admin` / `adminSoft`, so this class of bug is caught in future.
+
+**Zero hardcoded `Colors.white` and zero raw `snapshot.error` remain anywhere in the admin screens.**
+
+### Safety
+No Cloud Function, repository method, or registration/import logic was touched — only presentation. One regression was caught and reverted mid-work: a bulk `perl` substitution damaged `admin_portal_page.dart` (118 analyzer errors) by deleting `style: const TextStyle(` lines; restored from backup and redone with precise edits.
+
+### Admin parity pass (bringing admin up to the student screens)
+- ✅ **Defect D2 finally fixed** — `print_options_dialog` forced `width: 420` inside an `AlertDialog`, which reserves 40px inset each side, so it overflowed horizontally on *every* phone. Now takes the lesser of 420 and the space available. Its list also had a fixed 340px height cap regardless of screen height, pushing the action buttons off a short landscape phone; now proportional.
+- ✅ **Content measure** — the dashboard stretched edge-to-edge on a 1920px monitor; now capped at `AppContentWidth.max` like the student screens.
+- ✅ **Animated stat counters** (`CountUpText`), matching the student score dials.
+- ✅ **`AppEmptyView` for "no groups yet"**, with a create-first-group action, replacing a plain text card.
+- ✅ **Staggered entrance** on the dashboard — coarse (actions / stats / search / whole group list) so searching doesn't replay a growing delay chain.
+- ✅ **Import errors recoloured** from `brand` to `danger` — an error pill in the brand colour read as decorative rather than a problem.
+
+**Remaining admin gaps (deliberate, not oversights):** `import_students_page` and `print_options_dialog` have no stagger or skeleton — the import page's states are driven by user action rather than a load, and the dialog is transient. The 11 raw `AlertDialog`s are scroll-safe where it mattered (the two multi-field ones were wrapped) but have not been migrated to `AppDialog` wholesale.
+
+---
+
+## Final polish pass
+
+### Measured audit (not estimated)
+| Check | Result |
+|---|---|
+| Bundle | `main.dart.js` 4.4 MB + `canvaskit.wasm` 6.9 MB ≈ 13 MB uncompressed; gzip **is** on in `.htaccess`, so real transfer ≈ 4–5 MB |
+| Graphics perf | Clean — 1 `Opacity`, 3 `ClipRRect`, 1 `BoxShadow` across the whole app. Flat cards removed the shadow cost |
+| Tickers | 4 repeating animations, all gated by `TickerMode` |
+| Type scale | 83 inline `TextStyle`s / 16 distinct `fontSize` values — outliers now migrated |
+| `.symbols` | 6.1 MB of CanvasKit debug symbols ship to Hostinger; **left alone by your decision** |
+
+**On "is it lagging?" — not answerable here.** Frame timing needs a visible browser pane and screenshots have timed out all session. The structural causes of jank are absent, but that is not the same as measuring it.
+
+### Opening + login
+- ✅ **Splash logo draws itself** — each stroke of the "A" animates on via `stroke-dasharray`, staggered 60/200/480 ms. Pure CSS, zero runtime cost, first thing anyone sees.
+- ✅ **Splash → app bar continuity** — on dismiss the mark scales to ~0.34 and rises toward where the app-bar mark sits, while the wordmark and bar fade. An approximation, not a true shared element: the handoff is HTML → Flutter.
+- ✅ **Sign-in button morph** — full-width label → circular spinner → success check. Backed by a `_SubmitState` enum; `_isLoading` became a getter so every existing check still reads correctly. Sign-in is the app's slowest interaction (Auth + a Firestore role read), so the wait needed to look handled.
+- ✅ **Login → Home reveal** — cross-fade + subtle scale instead of a slide. Login is *replaced*, not stacked, so a slide implied a spatial relationship that doesn't exist; Home's stagger plays underneath the fade.
+
+### More motion
+- ✅ **Nav icon spring** on the selected destination, on top of the sliding pill.
+- ✅ **`SuccessPulse`** — new primitive; wired to Grant Premium, where the card stays on screen. *Not* used on Project Context save, which navigates away immediately — the pulse would never be seen.
+- ⬜ **Animated list reorder** — not built. It would fight the staggered entrance already on those lists, and getting both right needs more care than the remaining budget allowed. Flagging rather than shipping something half-working.
+
+### Type scale
+Outliers migrated onto the scale: `32`→`displayMedium`, `14.5`→`bodyMedium`, `13`→`bodySmall`, `15`→`titleMedium`/`bodyLarge`. The `fontSize: 9` "SCORE" label was **below the scale's floor and below comfortable legibility** — now `eyebrow`. Colour-only inline styles were left alone, as agreed.

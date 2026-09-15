@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "276525832875",
+    "project_id": "appstone-db",
+    "storage_bucket": "appstone-db.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:276525832875:android:f4f5ffc66a5c01184975ee",
+        "android_client_info": {
+          "package_name": "com.example.appstone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAiP35vxdY70FaS6TR1GN1ahe09ZV3oRNk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

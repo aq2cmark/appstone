@@ -1,0 +1,71 @@
+# Appstone web hosting rules for Apache / LiteSpeed (Hostinger).
+#
+# Flutter copies everything in web/ into build/web, so this file ends up beside
+# index.html in the build output - upload it with the rest of the build. Hosts
+# that ignore .htaccess (Vercel, Firebase Hosting) simply skip it, so keeping it
+# here is safe everywhere.
+#
+# If you serve the app from a SUBFOLDER (e.g. yourdomain.com/appstone/), build
+# with `flutter build web --release --base-href /appstone/` and uncomment the
+# RewriteBase line below.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # RewriteBase /appstone/
+
+  # Force HTTPS. The microphone (voice answers) and Firebase Auth only work on a
+  # secure origin, so plain http:// must never be served.
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Real files and folders (main.dart.js, assets/, canvaskit/, icons/...) are
+  # served as-is.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Anything else is a Flutter route, not a missing file: hand it index.html so
+  # the app boots and routes it itself instead of the host returning its own 404.
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+<IfModule mod_mime.c>
+  # Wrong MIME types here are the usual cause of a blank white page: the browser
+  # refuses to run the engine. .wasm in particular is not in Apache's defaults.
+  AddType application/wasm .wasm
+  AddType text/javascript .js
+  AddType application/json .json
+  AddType application/manifest+json .webmanifest
+  AddType image/svg+xml .svg
+  AddType font/woff2 .woff2
+  AddType font/ttf .ttf
+  AddType application/octet-stream .bin
+</IfModule>
+
+<IfModule mod_deflate.c>
+  # main.dart.js is multi-megabyte and compresses very well; without this,
+  # first load on campus wifi is painful.
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/javascript
+  AddOutputFilterByType DEFLATE application/javascript application/json
+  AddOutputFilterByType DEFLATE application/wasm image/svg+xml
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Flutter's web output is NOT content-hashed - every release ships the same
+  # filenames - so code and metadata must be revalidated on each load or students
+  # keep running the previous deploy. ETags make that a cheap 304, not a redownload.
+  <FilesMatch "\.(html|json|js|wasm|symbols)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+
+  # Fonts, icons and images do change name/content rarely, so they can sit in the
+  # cache for a week.
+  <FilesMatch "\.(png|jpg|jpeg|gif|webp|svg|ico|woff2|ttf|otf)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+</IfModule>
+
+# A directory listing must never be served in place of the app.
+Options -Indexes
+DirectoryIndex index.html

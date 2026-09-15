@@ -1,0 +1,138 @@
+rules_version = '2';
+
+// Appstone Firestore security rules.
+//
+// Context that shapes these rules:
+//  - Admins are Firebase Auth accounts, gated by a matching active doc in the
+//    `admins` collection. This is the sensitive part and is locked down here.
+//  - Students are NOT Firebase Auth accounts. Student login and password
+//    changes are done client-side against `groups`, so reading and updating a
+//    group has to stay open. Only creating/deleting a whole group is limited to
+//    admins. (Tightening student writes further would need real student Auth
+//    accounts - out of scope.)
+//
+// IMPORTANT - bootstrapping the first owner:
+// These rules require an existing active owner to create new admin records,
+// which means the very first owner cannot be created by the app once these
+// rules are live. Before publishing this file, sign in once with your admin
+// email/password while rules are still open (or manually create your
+// `admins/{your-email}` doc in the console with role: "owner", active: true).
+// Only publish this file AFTER that first owner document exists.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // The signed-in user's email, lower-cased to match the admins doc ids.
+    function callerEmail() {
+      return request.auth != null ? request.auth.token.email.lower() : '';
+    }
+
+    function adminPath() {
+      return /databases/$(database)/documents/admins/$(callerEmail());
+    }
+
+    // An authenticated user whose admins doc exists and is active.
+    function isActiveAdmin() {
+      return request.auth != null
+        && exists(adminPath())
+        && get(adminPath()).data.active == true;
+    }
+
+    function isOwner() {
+      return isActiveAdmin() && get(adminPath()).data.role == 'owner';
+    }
+
+    // True when the signed-in user is the student that owns [groupId], resolved
+    // via their studentIndex entry. Lets a student read only their own group.
+    function isOwnGroup(groupId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/studentIndex/$(request.auth.uid))
+        && get(/databases/$(database)/documents/studentIndex/$(request.auth.uid)).data.groupId == groupId;
+    }
+
+    // --- Admin roster: who can access the portal ---------------------------
+    match /admins/{adminEmail} {
+      // Reading an admin record requires a login (the old unauthenticated
+      // sign-up check is gone). This stops anyone from pulling an admin's role,
+      // uid, or pending-transfer target without being signed in.
+      allow get, list: if request.auth != null;
+
+      // Only owners create or remove admin records.
+      allow create, delete: if isOwner();
+
+      // Owners may change any field. An invited user may link their OWN uid on
+      // first sign-in, but must not change their role or active flag - this is
+      // what stops a deactivated admin from re-enabling themselves or anyone
+      // from self-promoting to owner.
+      allow update: if isOwner()
+        || (adminEmail == callerEmail()
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.active == resource.data.active);
+    }
+
+    // --- Capstone groups (with embedded student records) -------------------
+    // Admins may read/write any group. A student may read ONLY their own group
+    // (so they can't harvest other students' emails / un-changed temp passwords
+    // from other groups). Student password changes go through Cloud Functions
+    // (Admin SDK), which bypass these rules.
+    match /groups/{groupId} {
+      allow read: if isActiveAdmin() || isOwnGroup(groupId);
+      allow write: if isActiveAdmin();
+    }
+
+    // --- Student ID counter: only touched during admin registration --------
+    match /metadata/{docId} {
+      allow read, write: if isActiveAdmin();
+    }
+
+    // --- Defense practice history -------------------------------------------
+    // Students are Firebase Auth accounts now, so reading/creating their own
+    // practice records requires a login. Records are append-only from the app;
+    // only admins can clean them up.
+    match /practice_sessions/{sessionId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if isActiveAdmin();
+    }
+
+    // --- Paper checker history ----------------------------------------------
+    // Same shape as practice history: a student's saved manuscript checks,
+    // used to compare a paper against its earlier checks. Append-only from the
+    // app; only admins can clean them up.
+    match /paper_checks/{checkId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if isActiveAdmin();
+    }
+
+    // --- Admin audit log ----------------------------------------------------
+    // A tamper-evident record of admin actions. Any active admin appends an
+    // entry when they act; only owners may read the whole log (it is surfaced
+    // on the owner-only Audit Log page). Entries are immutable - no update or
+    // delete is ever allowed, so the history cannot be rewritten from the app.
+    match /audit_logs/{entryId} {
+      allow read: if isOwner();
+      allow create: if isActiveAdmin();
+      allow update, delete: if false;
+    }
+
+    // --- Student login lookups ----------------------------------------------
+    // studentIdToEmail lets Student-ID login resolve to the email BEFORE the
+    // student is signed in, so a single unauthenticated `get` is allowed (you
+    // must already know the exact Student ID; the list is never enumerable).
+    // studentIndex maps a signed-in student's uid to their group. Both are
+    // written ONLY by Cloud Functions (Admin SDK bypasses rules), so all
+    // client writes are denied.
+    match /studentIdToEmail/{studentId} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+    match /studentIndex/{uid} {
+      // A student may read only their own entry; admins may read any (to move a
+      // student). Prevents any logged-in user enumerating every student.
+      allow read: if isActiveAdmin() || (request.auth != null && request.auth.uid == uid);
+      // Admins update this when moving a student between groups. Cloud Functions
+      // (Admin SDK) bypass these rules for the create/delete cases.
+      allow write: if isActiveAdmin();
+    }
+
+    // Anything not matched above is denied by default.
+  }
+}
