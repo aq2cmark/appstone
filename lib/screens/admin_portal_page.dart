@@ -20,6 +20,7 @@ import '../widgets/icon_tile.dart';
 import 'admin_management_page.dart';
 import 'audit_log_page.dart';
 import 'import_students_page.dart';
+import 'admin_settings_page.dart';
 import 'login_page.dart';
 import 'print_options_dialog.dart';
 
@@ -39,6 +40,7 @@ class AdminPortalPage extends StatefulWidget {
 class _AdminPortalPageState extends State<AdminPortalPage> {
   final _repo = AdminRepository();
   int selectedPage = 0;
+  int _maxGroupMembers = AdminRepository.defaultMaxGroupMembers;
 
   final _searchController = TextEditingController();
   String _query = '';
@@ -52,6 +54,21 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   /// group pulsing twice still animates the second time.
   String? _pulsedGroupId;
   int _pulseTick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMaxGroupMembers();
+  }
+
+  Future<void> _loadMaxGroupMembers() async {
+    try {
+      final value = await _repo.getMaxGroupMembers();
+      if (mounted) setState(() => _maxGroupMembers = value);
+    } catch (_) {
+      // Keep the default limit if the preference cannot be loaded.
+    }
+  }
 
   @override
   void dispose() {
@@ -147,7 +164,11 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                           : selectedPage == 1
                           ? buildRegisterStudent(groups)
                           : selectedPage == 2
-                          ? ImportStudentsPage(repo: _repo, groups: groups)
+                          ? ImportStudentsPage(
+                              repo: _repo,
+                              groups: groups,
+                              maxGroupMembers: _maxGroupMembers,
+                            )
                           : selectedPage == 3 &&
                                 widget.role == AdminRole.owner
                           ? AdminManagementPage(
@@ -158,6 +179,14 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                           : selectedPage == 4 &&
                                 widget.role == AdminRole.owner
                           ? AuditLogPage(repo: _repo)
+                          : selectedPage == 5
+                          ? AdminSettingsPage(
+                              repo: _repo,
+                              maxGroupMembers: _maxGroupMembers,
+                              onMaxGroupMembersChanged: (value) => setState(
+                                () => _maxGroupMembers = value,
+                              ),
+                            )
                           : buildDashboard(groups),
                     ),
                   ],
@@ -253,6 +282,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               navButton(3, Icons.admin_panel_settings_rounded, 'Admins'),
             if (widget.role == AdminRole.owner)
               navButton(4, Icons.history_rounded, 'Audit Log'),
+            navButton(5, Icons.settings_rounded, 'Settings'),
             const Spacer(),
             Divider(height: 1, color: colors.divider),
             AppSpacing.vSm,
@@ -319,7 +349,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Import Students'
         : selectedPage == 3
         ? 'Manage Admins'
-        : 'Audit Log';
+        : selectedPage == 4
+        ? 'Audit Log'
+        : 'Settings';
 
     final subtitle = selectedPage == 0
         ? 'Manage student groups and monitor premium feature subscriptions'
@@ -329,7 +361,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Add many students at once from an Excel or CSV roster'
         : selectedPage == 3
         ? 'Invite admins and control who has access'
-        : 'Review a history of admin actions';
+        : selectedPage == 4
+        ? 'Review a history of admin actions'
+        : 'Configure group capacity';
 
     final colors = AppColors.of(context);
 
@@ -484,8 +518,8 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 accent: colors.admin,
                 title: 'No capstone groups yet',
                 body: 'Create a group first, then register or import the '
-                    'students who belong to it. Each group holds up to five '
-                    'members.',
+                    'students who belong to it. Each group holds up to '
+                    '$_maxGroupMembers members.',
                 action: FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: colors.admin),
                   onPressed: createGroup,
@@ -641,7 +675,8 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${group.students.length} of 5 members - ${5 - group.students.length} spots available',
+                    '${group.students.length} of $_maxGroupMembers members - '
+                    '${(_maxGroupMembers - group.students.length).clamp(0, _maxGroupMembers)} spots available',
                     style: AppTypography.bodySmall.copyWith(
                       color: colors.textSecondary,
                     ),

@@ -32,6 +32,41 @@ class AdminRepository {
     return CapstoneGroup.fromSnapshot(snapshot);
   }
 
+  static const int defaultMaxGroupMembers = 5;
+  static const int minimumMaxGroupMembers = 1;
+  static const int maximumMaxGroupMembers = 100;
+
+  Future<int> getMaxGroupMembers() async {
+    final snapshot = await _firestore
+        .collection('metadata')
+        .doc('appSettings')
+        .get();
+    final value = snapshot.data()?['maxGroupMembers'];
+    if (value is num &&
+        value >= minimumMaxGroupMembers &&
+        value <= maximumMaxGroupMembers) {
+      return value.toInt();
+    }
+    return defaultMaxGroupMembers;
+  }
+
+  Future<void> setMaxGroupMembers(int value) async {
+    if (value < minimumMaxGroupMembers || value > maximumMaxGroupMembers) {
+      throw StateError(
+        'Maximum group members must be between $minimumMaxGroupMembers and '
+        '$maximumMaxGroupMembers.',
+      );
+    }
+    await _firestore.collection('metadata').doc('appSettings').set({
+      'maxGroupMembers': value,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await _recordAudit(
+      action: 'settings.maxGroupMembers',
+      description: 'Set maximum group members to $value',
+    );
+  }
+
   // One-off fetch of all groups, used by the bulk student import to validate
   // rows and map group names to ids.
   Future<List<CapstoneGroup>> getGroups() async {
@@ -444,10 +479,12 @@ class AdminRepository {
     var toGroupName = '';
     final fromRef = _firestore.collection('groups').doc(fromGroup.id);
     final toRef = _firestore.collection('groups').doc(newGroupId);
+    final settingsRef = _firestore.collection('metadata').doc('appSettings');
 
     await _firestore.runTransaction((transaction) async {
       final fromSnapshot = await transaction.get(fromRef);
       final toSnapshot = await transaction.get(toRef);
+      final settingsSnapshot = await transaction.get(settingsRef);
       if (!fromSnapshot.exists) {
         throw StateError('The student\'s current group no longer exists.');
       }
@@ -461,8 +498,17 @@ class AdminRepository {
       if (!fromGroupNow.students.any((s) => s.id == student.id)) {
         throw StateError('Student account not found.');
       }
-      if (toGroupNow.students.length >= 5) {
-        throw StateError('${toGroupNow.name} already has 5 members.');
+      final configuredLimit = settingsSnapshot.data()?['maxGroupMembers'];
+      final maxGroupMembers =
+          configuredLimit is num &&
+              configuredLimit >= minimumMaxGroupMembers &&
+              configuredLimit <= maximumMaxGroupMembers
+          ? configuredLimit.toInt()
+          : defaultMaxGroupMembers;
+      if (toGroupNow.students.length >= maxGroupMembers) {
+        throw StateError(
+          '${toGroupNow.name} already has $maxGroupMembers members.',
+        );
       }
 
       final movedStudent = student.copyWith(name: trimmedName);

@@ -96,8 +96,9 @@ class StudentImportService {
 
   ImportPreview validate(
     List<ParsedStudentRow> parsed,
-    List<CapstoneGroup> existingGroups,
-  ) {
+    List<CapstoneGroup> existingGroups, {
+    int maxGroupSize = StudentImportService.maxGroupSize,
+  }) {
     // Existing state to check against.
     final existingEmails = <String>{
       for (final group in existingGroups)
