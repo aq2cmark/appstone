@@ -23,7 +23,7 @@ class WorkflowGeneration {
 // key server-side), same as the app's other AI features.
 class WorkflowService {
   // Mistral Large is down; routed to Agnes 2.5 Flash on NaraRouter until it recovers.
-  static const _model = 'agnes-2.5-flash';
+  static const _model = 'laguna-s-2.1';
 
   Future<WorkflowGeneration> generate({
     required String paperText,

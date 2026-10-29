@@ -54,7 +54,7 @@ class DefenseScore {
 // this proxy is required, not optional.
 class DefenseAiService {
   // Mistral Large is down; routed to Agnes 2.5 Flash on NaraRouter until it recovers.
-  static const _model = 'agnes-2.5-flash';
+  static const _model = 'laguna-s-2.1';
 
   // One id for this whole practice session (this service is created once per
   // session), so all of its AI calls count as a SINGLE session against the cap.
