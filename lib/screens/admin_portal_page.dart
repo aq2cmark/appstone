@@ -649,19 +649,24 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 ],
               );
 
-              // Premium is one-way: once granted there is no revoke button, only the chip above.
               final actions = Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!group.isPremium)
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colors.premium,
-                        foregroundColor: colors.onColor,
-                      ),
-                      onPressed: () => grantPremium(group),
-                      child: const Text('Grant Premium'),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: group.isPremium
+                          ? colors.surfaceSunken
+                          : colors.premium,
+                      foregroundColor: group.isPremium
+                          ? colors.textPrimary
+                          : colors.onColor,
                     ),
+                    onPressed: () =>
+                        setGroupPremium(group, !group.isPremium),
+                    child: Text(
+                      group.isPremium ? 'Revert to Free' : 'Grant Premium',
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Delete group',
@@ -1115,16 +1120,18 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     }
   }
 
-  Future<void> grantPremium(CapstoneGroup group) async {
+  Future<void> setGroupPremium(CapstoneGroup group, bool isPremium) async {
     final colors = AppColors.of(context);
-    // Premium has no revoke path, so granting it deserves a confirmation.
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Grant Premium'),
+        title: Text(isPremium ? 'Grant Premium' : 'Revert to Free Plan'),
         content: Text(
-          'Grant Premium to "${group.name}"? This unlocks the premium '
-          'features for all its members and cannot be reverted.',
+          isPremium
+              ? 'Grant Premium to "${group.name}"? This unlocks premium '
+                  'features for all its members.'
+              : 'Revert "${group.name}" to the free plan? Premium features '
+                  'will no longer be available to its members.',
         ),
         actions: [
           TextButton(
@@ -1137,14 +1144,17 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               foregroundColor: colors.onColor,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Grant Premium'),
+            child: Text(isPremium ? 'Grant Premium' : 'Revert to Free'),
           ),
         ],
       ),
     );
 
     if (confirm != true) return;
-    await runAction(() => _repo.grantPremium(group), 'Premium granted.');
+    await runAction(
+      () => _repo.setPremium(group, isPremium),
+      isPremium ? 'Premium granted.' : 'Group reverted to the free plan.',
+    );
     // Pulse the card so the change is visible where it happened, not only in
     // a snack bar that may be read after looking away.
     if (mounted) {

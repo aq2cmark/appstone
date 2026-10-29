@@ -369,15 +369,16 @@ class AdminRepository {
     });
   }
 
-  // Premium is one-directional: once granted it stays on, so there is no revoke path.
-  Future<void> grantPremium(CapstoneGroup group) async {
+  // Admins can grant or revoke a group's premium access; both changes are audited.
+  Future<void> setPremium(CapstoneGroup group, bool isPremium) async {
     await _firestore.collection('groups').doc(group.id).update({
-      'isPremium': true,
+      'isPremium': isPremium,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     await _recordAudit(
-      action: 'group.grantPremium',
-      description: 'Granted premium to ${group.name}',
+      action: isPremium ? 'group.grantPremium' : 'group.revokePremium',
+      description:
+          '${isPremium ? 'Granted' : 'Revoked'} premium for ${group.name}',
     );
   }
 
