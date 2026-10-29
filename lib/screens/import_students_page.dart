@@ -60,7 +60,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                   'in the first row: Name, Email, and Group. Each student is '
                   'auto-assigned a Student ID and a temporary password. Groups '
                   'named in the file are created if they do not exist yet '
-                  '(max $maxGroupMembers members each).',
+                  '(max ${widget.maxGroupMembers} members each).',
                   style: TextStyle(color: colors.textSecondary),
                 ),
                 const SizedBox(height: 16),
