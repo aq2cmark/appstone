@@ -32,12 +32,6 @@ class AdminRepository {
     return CapstoneGroup.fromSnapshot(snapshot);
   }
 
-  Stream<bool> groupPremiumStream(String groupId) => _firestore
-      .collection('groups')
-      .doc(groupId)
-      .snapshots()
-      .map((snapshot) => (snapshot.data()?['isPremium'] as bool?) ?? false);
-
   // One-off fetch of all groups, used by the bulk student import to validate
   // rows and map group names to ids.
   Future<List<CapstoneGroup>> getGroups() async {
@@ -272,8 +266,7 @@ class AdminRepository {
         .collection('admins')
         .doc(ownerLower)
         .get();
-    final pendingTo =
-        ownerSnapshot.data()?['pendingOwnerTransferTo'] as String?;
+    final pendingTo = ownerSnapshot.data()?['pendingOwnerTransferTo'] as String?;
 
     if (toLower == null || pendingTo == null || pendingTo != toLower) {
       await _auth.signOut();
@@ -376,51 +369,15 @@ class AdminRepository {
     });
   }
 
-  // Admins can grant or revoke a group's premium access; both changes are audited.
-  Future<void> setPremium(CapstoneGroup group, bool isPremium) async {
+  // Premium is one-directional: once granted it stays on, so there is no revoke path.
+  Future<void> grantPremium(CapstoneGroup group) async {
     await _firestore.collection('groups').doc(group.id).update({
-      'isPremium': isPremium,
+      'isPremium': true,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     await _recordAudit(
-      action: isPremium ? 'group.grantPremium' : 'group.revokePremium',
-      description:
-          '${isPremium ? 'Granted' : 'Revoked'} premium for ${group.name}',
-    );
-  }
-
-  static const int defaultMaxGroupMembers = 5;
-  static const int minimumMaxGroupMembers = 1;
-  static const int maximumMaxGroupMembers = 100;
-
-  Future<int> getMaxGroupMembers() async {
-    final snapshot = await _firestore
-        .collection('metadata')
-        .doc('appSettings')
-        .get();
-    final value = snapshot.data()?['maxGroupMembers'];
-    if (value is num &&
-        value >= minimumMaxGroupMembers &&
-        value <= maximumMaxGroupMembers) {
-      return value.toInt();
-    }
-    return defaultMaxGroupMembers;
-  }
-
-  Future<void> setMaxGroupMembers(int value) async {
-    if (value < minimumMaxGroupMembers || value > maximumMaxGroupMembers) {
-      throw StateError(
-        'Maximum group members must be between $minimumMaxGroupMembers and '
-        '$maximumMaxGroupMembers.',
-      );
-    }
-    await _firestore.collection('metadata').doc('appSettings').set({
-      'maxGroupMembers': value,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-    await _recordAudit(
-      action: 'settings.maxGroupMembers',
-      description: 'Set maximum group members to $value',
+      action: 'group.grantPremium',
+      description: 'Granted premium to ${group.name}',
     );
   }
 
@@ -486,12 +443,10 @@ class AdminRepository {
     var toGroupName = '';
     final fromRef = _firestore.collection('groups').doc(fromGroup.id);
     final toRef = _firestore.collection('groups').doc(newGroupId);
-    final settingsRef = _firestore.collection('metadata').doc('appSettings');
 
     await _firestore.runTransaction((transaction) async {
       final fromSnapshot = await transaction.get(fromRef);
       final toSnapshot = await transaction.get(toRef);
-      final settingsSnapshot = await transaction.get(settingsRef);
       if (!fromSnapshot.exists) {
         throw StateError('The student\'s current group no longer exists.');
       }
@@ -505,17 +460,8 @@ class AdminRepository {
       if (!fromGroupNow.students.any((s) => s.id == student.id)) {
         throw StateError('Student account not found.');
       }
-      final configuredLimit = settingsSnapshot.data()?['maxGroupMembers'];
-      final maxGroupMembers =
-          configuredLimit is num &&
-              configuredLimit >= minimumMaxGroupMembers &&
-              configuredLimit <= maximumMaxGroupMembers
-          ? configuredLimit.toInt()
-          : defaultMaxGroupMembers;
-      if (toGroupNow.students.length >= maxGroupMembers) {
-        throw StateError(
-          '${toGroupNow.name} already has $maxGroupMembers members.',
-        );
+      if (toGroupNow.students.length >= 5) {
+        throw StateError('${toGroupNow.name} already has 5 members.');
       }
 
       final movedStudent = student.copyWith(name: trimmedName);
@@ -577,10 +523,8 @@ class AdminRepository {
   // student record the dashboard needs. Returns null if the uid isn't a student
   // (e.g. it's an admin), so the caller can route accordingly.
   Future<StudentLoginResult?> getStudentContextByUid(String uid) async {
-    final indexSnap = await _firestore
-        .collection('studentIndex')
-        .doc(uid)
-        .get();
+    final indexSnap =
+        await _firestore.collection('studentIndex').doc(uid).get();
     if (!indexSnap.exists) return null;
     final groupId = indexSnap.data()?['groupId'] as String?;
     if (groupId == null) return null;
@@ -593,6 +537,7 @@ class AdminRepository {
     }
     return null;
   }
+
 }
 
 // Admin roles. `owner` can manage other admins (invite / deactivate /
@@ -636,12 +581,12 @@ class AdminAccount {
   bool get isPending => uid == null;
 
   AdminAccount copyWith({String? uid}) => AdminAccount(
-    email: email,
-    name: name,
-    role: role,
-    active: active,
-    uid: uid ?? this.uid,
-  );
+        email: email,
+        name: name,
+        role: role,
+        active: active,
+        uid: uid ?? this.uid,
+      );
 }
 
 // One recorded admin action from the append-only `audit_logs` collection.

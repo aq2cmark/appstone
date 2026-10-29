@@ -148,12 +148,6 @@ class _AppShellState extends State<AppShell> {
     ...List<Widget?>.filled(AppDestination.values.length - 1, null),
   ];
 
-  @override
-  void didUpdateWidget(covariant AppShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.home != widget.home) _built[0] = widget.home;
-  }
-
   Widget _destination(int index) {
     final destination = AppDestination.values[index];
 

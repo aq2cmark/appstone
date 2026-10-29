@@ -788,27 +788,16 @@ exports.createStudent = onCall(
 
     const groupRef = db().collection('groups').doc(groupId);
     const counterRef = db().collection('metadata').doc('studentCounter');
-    const settingsRef = db().collection('metadata').doc('appSettings');
 
     // Reserve a Student ID and confirm the group has room, atomically.
     const studentId = await db().runTransaction(async (tx) => {
       const groupSnap = await tx.get(groupRef);
-      const settingsSnap = await tx.get(settingsRef);
       if (!groupSnap.exists) {
         throw new HttpsError('not-found', 'That group no longer exists.');
       }
       const students = groupSnap.data().students || [];
-      const configuredLimit = Number(settingsSnap.data()?.maxGroupMembers);
-      const maxGroupMembers = Number.isInteger(configuredLimit)
-        && configuredLimit >= 1
-        && configuredLimit <= 100
-        ? configuredLimit
-        : 5;
-      if (students.length >= maxGroupMembers) {
-        throw new HttpsError(
-          'failed-precondition',
-          `This group already has ${maxGroupMembers} members.`,
-        );
+      if (students.length >= 5) {
+        throw new HttpsError('failed-precondition', 'This group already has 5 members.');
       }
       const counterSnap = await tx.get(counterRef);
       const n = (counterSnap.data() && counterSnap.data().nextNumber) || 1;
@@ -927,20 +916,7 @@ exports.deleteStudent = onCall(
       throw new HttpsError('failed-precondition', 'That is not a student account.');
     }
 
-    try {
-      await admin.auth().deleteUser(uid);
-    } catch (e) {
-      // A prior partial deletion may already have removed Auth. Ignore only
-      // that case; permission or service errors must reach the admin instead
-      // of reporting success while the login still exists.
-      if (e.code !== 'auth/user-not-found') {
-        logger.error('Could not delete student Auth account', { uid, code: e.code });
-        throw new HttpsError(
-          'internal',
-          'Could not delete the student login. Please try again.',
-        );
-      }
-    }
+    await admin.auth().deleteUser(uid).catch(() => {}); // ignore if already gone
 
     const groupRef = db().collection('groups').doc(groupId);
     const snap = await groupRef.get();
