@@ -12,6 +12,7 @@ import '../widgets/theme_toggle_button.dart';
 import '../models/workflow_plan.dart';
 import '../services/document_text_extractor.dart';
 import '../services/workflow_service.dart';
+import '../widgets/ai_disclaimer.dart';
 
 // AI Workflow: the student uploads their paper and says how long they have.
 // The AI reads the paper and proposes weighted phases; the app schedules them
@@ -117,6 +118,12 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
           'Upload your paper and tell us how long you have. The AI builds a '
           'chapter-by-chapter timeline you can track and adjust.',
           style: AppTypography.bodyLarge,
+        ),
+        const SizedBox(height: 8),
+        const AiDisclaimer(
+          text: 'The AI plan is a suggestion and may miss requirements or '
+              'misjudge the work involved. Confirm deadlines and priorities '
+              'with your adviser; it is not professional advice.',
         ),
         const SizedBox(height: 16),
         Card(
@@ -231,6 +238,14 @@ class _AIWorkflowScreenState extends State<AIWorkflowScreen> {
       // rather than one per phase - a 15-phase Final Defense plan would
       // otherwise take a full second just to finish arriving.
       children: StaggeredEntrance.list(<Widget>[
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: AiDisclaimer(
+            text: 'This AI-generated schedule is a planning aid and may be '
+                'incomplete or unrealistic. Check it against your course '
+                'requirements and adviser’s guidance.',
+          ),
+        ),
         _buildStatusCard(plan, daysLeft, allDone),
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

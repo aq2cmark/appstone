@@ -11,6 +11,7 @@ import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/ai_disclaimer.dart';
 import '../widgets/charts/score_dial.dart';
 import '../widgets/icon_tile.dart';
 import '../widgets/states/app_states.dart';
@@ -89,6 +90,12 @@ class _PaperCheckerScreenState extends State<PaperCheckerScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _buildUploadCard(),
+        AppSpacing.vMd,
+        const AiDisclaimer(
+          text: 'This AI pre-check can make mistakes and is only a guide. '
+              'It is not an official grade or professional advice; confirm '
+              'requirements with your adviser and panel.',
+        ),
         AppSpacing.vLg,
         FilledButton.icon(
           style: FilledButton.styleFrom(

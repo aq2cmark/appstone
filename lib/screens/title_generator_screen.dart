@@ -10,6 +10,7 @@ import '../widgets/theme_toggle_button.dart';
 import '../services/friendly_error.dart';
 import '../services/title_generator_service.dart';
 import '../theme/app_typography.dart';
+import '../widgets/ai_disclaimer.dart';
 
 // The fields a capstone can sit in. Every chip is tagged with the domains it
 // belongs to, which is what keeps a set of picks coherent: "Healthcare Workers"
@@ -371,6 +372,12 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                     'Generate and we\'ll pick a set for you.',
                     style: TextStyle(fontSize: 16),
                   ),
+                  const SizedBox(height: 8),
+                  const AiDisclaimer(
+                    text: 'AI title ideas may be inaccurate or unsuitable. '
+                        'Review and adapt them with your adviser; they are '
+                        'not professional or academic advice.',
+                  ),
                   // Slides open with the chips rather than snapping in the
                   // moment the first filter is picked.
                   AnimatedSize(
@@ -550,6 +557,11 @@ class _TitleGeneratorScreenState extends State<TitleGeneratorScreen> {
                 SelectableText('• $title'),
                 const SizedBox(height: 8),
               ],
+              const AiDisclaimer(
+                text: 'These are AI-generated suggestions. Check that a title '
+                    'is accurate, original, feasible, and approved by your '
+                    'adviser before using it.',
+              ),
             ],
           ),
           actions: [

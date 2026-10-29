@@ -20,6 +20,7 @@ import '../widgets/icon_tile.dart';
 import 'admin_management_page.dart';
 import 'audit_log_page.dart';
 import 'import_students_page.dart';
+import 'admin_settings_page.dart';
 import 'login_page.dart';
 import 'print_options_dialog.dart';
 
@@ -39,6 +40,7 @@ class AdminPortalPage extends StatefulWidget {
 class _AdminPortalPageState extends State<AdminPortalPage> {
   final _repo = AdminRepository();
   int selectedPage = 0;
+  int _maxGroupMembers = AdminRepository.defaultMaxGroupMembers;
 
   final _searchController = TextEditingController();
   String _query = '';
@@ -52,6 +54,22 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   /// group pulsing twice still animates the second time.
   String? _pulsedGroupId;
   int _pulseTick = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMaxGroupMembers();
+  }
+
+  Future<void> _loadMaxGroupMembers() async {
+    try {
+      final value = await _repo.getMaxGroupMembers();
+      if (mounted) setState(() => _maxGroupMembers = value);
+    } catch (_) {
+      // The documented default keeps the portal usable if the settings read
+      // fails; registration remains protected by the Cloud Function limit.
+    }
+  }
 
   @override
   void dispose() {
@@ -111,7 +129,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     final isWide = MediaQuery.sizeOf(context).width >= 800;
 
     return Scaffold(
-            drawer: isWide ? null : Drawer(child: buildSidebarContent()),
+      drawer: isWide ? null : Drawer(child: buildSidebarContent()),
       body: StreamBuilder<List<CapstoneGroup>>(
         stream: _repo.groupsStream(),
         builder: (context, snapshot) {
@@ -147,17 +165,27 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                           : selectedPage == 1
                           ? buildRegisterStudent(groups)
                           : selectedPage == 2
-                          ? ImportStudentsPage(repo: _repo, groups: groups)
-                          : selectedPage == 3 &&
-                                widget.role == AdminRole.owner
+                          ? ImportStudentsPage(
+                              repo: _repo,
+                              groups: groups,
+                              maxGroupMembers: _maxGroupMembers,
+                            )
+                          : selectedPage == 3 && widget.role == AdminRole.owner
                           ? AdminManagementPage(
                               repo: _repo,
                               currentEmail:
-                                  FirebaseAuth.instance.currentUser?.email ?? '',
+                                  FirebaseAuth.instance.currentUser?.email ??
+                                  '',
                             )
-                          : selectedPage == 4 &&
-                                widget.role == AdminRole.owner
+                          : selectedPage == 4 && widget.role == AdminRole.owner
                           ? AuditLogPage(repo: _repo)
+                          : selectedPage == 5
+                          ? AdminSettingsPage(
+                              repo: _repo,
+                              maxGroupMembers: _maxGroupMembers,
+                              onMaxGroupMembersChanged: (value) =>
+                                  setState(() => _maxGroupMembers = value),
+                            )
                           : buildDashboard(groups),
                     ),
                   ],
@@ -253,6 +281,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               navButton(3, Icons.admin_panel_settings_rounded, 'Admins'),
             if (widget.role == AdminRole.owner)
               navButton(4, Icons.history_rounded, 'Audit Log'),
+            navButton(5, Icons.settings_rounded, 'Settings'),
             const Spacer(),
             Divider(height: 1, color: colors.divider),
             AppSpacing.vSm,
@@ -292,9 +321,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTypography.labelLarge.copyWith(
-            color: selected
-                ? tone
-                : (isLogout ? tone : colors.textPrimary),
+            color: selected ? tone : (isLogout ? tone : colors.textPrimary),
           ),
         ),
         onTap: () {
@@ -319,7 +346,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Import Students'
         : selectedPage == 3
         ? 'Manage Admins'
-        : 'Audit Log';
+        : selectedPage == 4
+        ? 'Audit Log'
+        : 'Settings';
 
     final subtitle = selectedPage == 0
         ? 'Manage student groups and monitor premium feature subscriptions'
@@ -329,7 +358,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         ? 'Add many students at once from an Excel or CSV roster'
         : selectedPage == 3
         ? 'Invite admins and control who has access'
-        : 'Review a history of admin actions';
+        : selectedPage == 4
+        ? 'Review a history of admin actions'
+        : 'Configure group capacity';
 
     final colors = AppColors.of(context);
 
@@ -423,96 +454,99 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         return _CenteredMax(
           maxWidth: AppContentWidth.max,
           child: ListView(
-          padding: EdgeInsets.all(pagePadding),
-          // Coarse stagger: the action row, the stat row, the search field,
-          // then the whole group list as one step. Animating each group card
-          // would replay a growing delay chain every time the search changes.
-          children: StaggeredEntrance.list(<Widget>[
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.brand,
+            padding: EdgeInsets.all(pagePadding),
+            // Coarse stagger: the action row, the stat row, the search field,
+            // then the whole group list as one step. Animating each group card
+            // would replay a growing delay chain every time the search changes.
+            children: StaggeredEntrance.list(<Widget>[
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.brand,
+                    ),
+                    onPressed: createGroup,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Create New Group'),
                   ),
-                  onPressed: createGroup,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Create New Group'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _printCredentials(groups),
-                  icon: const Icon(Icons.print_rounded),
-                  label: const Text('Print Credentials'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: 20,
-              runSpacing: 16,
-              children: [
-                statCard(
-                  'Total Groups',
-                  groups.length,
-                  Icons.groups_rounded,
-                  colors.brand,
-                  statWidth,
-                ),
-                statCard(
-                  'Total Students',
-                  totalStudents,
-                  Icons.person_add_rounded,
-                  colors.premium,
-                  statWidth,
-                ),
-                statCard(
-                  'Premium Groups',
-                  premiumGroups,
-                  Icons.workspace_premium_rounded,
-                  colors.brandStrong,
-                  statWidth,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            _buildSearchField(),
-            const SizedBox(height: 20),
-            if (groups.isEmpty)
-              AppEmptyView(
-                icon: Icons.groups_rounded,
-                accent: colors.admin,
-                title: 'No capstone groups yet',
-                body: 'Create a group first, then register or import the '
-                    'students who belong to it. Each group holds up to five '
-                    'members.',
-                action: FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: colors.admin),
-                  onPressed: createGroup,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Create the first group'),
-                ),
-              )
-            else if (_matchingGroups(groups).isEmpty)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    'No group or student matches "${_query.trim()}".',
-                    style: TextStyle(color: colors.textSecondary),
+                  OutlinedButton.icon(
+                    onPressed: () => _printCredentials(groups),
+                    icon: const Icon(Icons.print_rounded),
+                    label: const Text('Print Credentials'),
                   ),
-                ),
+                ],
               ),
-            // The stat cards above deliberately keep counting the *whole*
-            // roster while a search is active - they are a summary of the
-            // department, not of the current filter.
-            Column(
-              children: [
-                for (final group in _matchingGroups(groups))
-                  buildGroupCard(group, groups),
-              ],
-            ),
-          ]),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 20,
+                runSpacing: 16,
+                children: [
+                  statCard(
+                    'Total Groups',
+                    groups.length,
+                    Icons.groups_rounded,
+                    colors.brand,
+                    statWidth,
+                  ),
+                  statCard(
+                    'Total Students',
+                    totalStudents,
+                    Icons.person_add_rounded,
+                    colors.premium,
+                    statWidth,
+                  ),
+                  statCard(
+                    'Premium Groups',
+                    premiumGroups,
+                    Icons.workspace_premium_rounded,
+                    colors.brandStrong,
+                    statWidth,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              _buildSearchField(),
+              const SizedBox(height: 20),
+              if (groups.isEmpty)
+                AppEmptyView(
+                  icon: Icons.groups_rounded,
+                  accent: colors.admin,
+                  title: 'No capstone groups yet',
+                  body:
+                      'Create a group first, then register or import the '
+                      'students who belong to it. Each group holds up to '
+                      '$_maxGroupMembers members.',
+                  action: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.admin,
+                    ),
+                    onPressed: createGroup,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Create the first group'),
+                  ),
+                )
+              else if (_matchingGroups(groups).isEmpty)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'No group or student matches "${_query.trim()}".',
+                      style: TextStyle(color: colors.textSecondary),
+                    ),
+                  ),
+                ),
+              // The stat cards above deliberately keep counting the *whole*
+              // roster while a search is active - they are a summary of the
+              // department, not of the current filter.
+              Column(
+                children: [
+                  for (final group in _matchingGroups(groups))
+                    buildGroupCard(group, groups),
+                ],
+              ),
+            ]),
           ),
         );
       },
@@ -541,10 +575,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      label,
-                      style: TextStyle(color: colors.textSecondary),
-                    ),
+                    Text(label, style: TextStyle(color: colors.textSecondary)),
                     const SizedBox(height: 28),
                     // Counts up rather than appearing, matching the student
                     // side's score dials and progress figures.
@@ -593,141 +624,148 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     return SuccessPulse(
       trigger: pulse,
       child: Card(
-      margin: const EdgeInsets.only(bottom: 24),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final wideHeader = constraints.maxWidth >= 650;
-              final details = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        group.name,
-                        style: AppTypography.titleLarge.copyWith(
-                          color: colors.textPrimary,
+        margin: const EdgeInsets.only(bottom: 24),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wideHeader = constraints.maxWidth >= 650;
+                final details = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          group.name,
+                          style: AppTypography.titleLarge.copyWith(
+                            color: colors.textPrimary,
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: 'Rename group',
-                        onPressed: () => renameGroup(group),
-                        icon: Icon(
-                          Icons.edit_rounded,
-                          color: colors.textSecondary,
-                          size: 18,
+                        IconButton(
+                          tooltip: 'Rename group',
+                          onPressed: () => renameGroup(group),
+                          icon: Icon(
+                            Icons.edit_rounded,
+                            color: colors.textSecondary,
+                            size: 18,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
                         ),
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                      Chip(
-                        label: Text(group.isPremium ? 'Premium' : 'Free Plan'),
-                        backgroundColor: group.isPremium
-                            ? colors.premium
-                            : colors.surfaceSunken,
-                        labelStyle: TextStyle(
-                          color: group.isPremium
-                              ? colors.onColor
-                              : colors.textSecondary,
+                        Chip(
+                          label: Text(
+                            group.isPremium ? 'Premium' : 'Free Plan',
+                          ),
+                          backgroundColor: group.isPremium
+                              ? colors.premium
+                              : colors.surfaceSunken,
+                          labelStyle: TextStyle(
+                            color: group.isPremium
+                                ? colors.onColor
+                                : colors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${group.students.length} of 5 members - ${5 - group.students.length} spots available',
-                    style: AppTypography.bodySmall.copyWith(
-                      color: colors.textSecondary,
+                      ],
                     ),
-                  ),
-                ],
-              );
-
-              // Premium is one-way: once granted there is no revoke button, only the chip above.
-              final actions = Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!group.isPremium)
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: colors.premium,
-                        foregroundColor: colors.onColor,
-                      ),
-                      onPressed: () => grantPremium(group),
-                      child: const Text('Grant Premium'),
-                    ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'Delete group',
-                    onPressed: () => deleteGroup(group),
-                    icon: Icon(Icons.delete_rounded, color: colors.danger),
-                  ),
-                  IconButton(
-                    tooltip: collapsed ? 'Show students' : 'Hide students',
-                    onPressed: () => setState(() {
-                      if (collapsed) {
-                        _collapsedGroups.remove(group.id);
-                      } else {
-                        _collapsedGroups.add(group.id);
-                      }
-                    }),
-                    icon: AnimatedRotation(
-                      turns: collapsed ? -0.25 : 0,
-                      duration: AppMotion.quick,
-                      child: Icon(
-                        Icons.expand_more_rounded,
+                    const SizedBox(height: 6),
+                    Text(
+                      '${group.students.length} of $_maxGroupMembers members - '
+                      '${(_maxGroupMembers - group.students.length).clamp(0, _maxGroupMembers)} spots available',
+                      style: AppTypography.bodySmall.copyWith(
                         color: colors.textSecondary,
                       ),
                     ),
-                  ),
-                ],
-              );
+                  ],
+                );
 
-              return Container(
-                width: double.infinity,
-                // Was a solid `colors.brand` slab with white text - the same
-                // 3.55:1 dark-mode failure as the sidebar. A tinted admin
-                // surface keeps the group header distinct from the card body
-                // while staying legible in both themes.
-                color: colors.adminSoft,
-                padding: const EdgeInsets.all(20),
-                child: wideHeader
-                    ? Row(
-                        children: [
-                          Expanded(child: details),
-                          const SizedBox(width: 16),
-                          actions,
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          details,
-                          const SizedBox(height: 14),
-                          actions,
-                        ],
+                final actions = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: group.isPremium
+                            ? colors.surfaceSunken
+                            : colors.premium,
+                        foregroundColor: group.isPremium
+                            ? colors.textPrimary
+                            : colors.onColor,
                       ),
-              );
-            },
-          ),
-          if (!collapsed)
-            if (group.students.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('No students in this group yet.'),
-              )
-            else if (context.breakpoint.usesDataTable)
-              _buildStudentTable(group, groups)
-            else
-              _buildStudentCards(group, groups),
-        ],
-      ),
+                      onPressed: () => setGroupPremium(group, !group.isPremium),
+                      child: Text(
+                        group.isPremium ? 'Revert to Free' : 'Grant Premium',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Delete group',
+                      onPressed: () => deleteGroup(group),
+                      icon: Icon(Icons.delete_rounded, color: colors.danger),
+                    ),
+                    IconButton(
+                      tooltip: collapsed ? 'Show students' : 'Hide students',
+                      onPressed: () => setState(() {
+                        if (collapsed) {
+                          _collapsedGroups.remove(group.id);
+                        } else {
+                          _collapsedGroups.add(group.id);
+                        }
+                      }),
+                      icon: AnimatedRotation(
+                        turns: collapsed ? -0.25 : 0,
+                        duration: AppMotion.quick,
+                        child: Icon(
+                          Icons.expand_more_rounded,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+
+                return Container(
+                  width: double.infinity,
+                  // Was a solid `colors.brand` slab with white text - the same
+                  // 3.55:1 dark-mode failure as the sidebar. A tinted admin
+                  // surface keeps the group header distinct from the card body
+                  // while staying legible in both themes.
+                  color: colors.adminSoft,
+                  padding: const EdgeInsets.all(20),
+                  child: wideHeader
+                      ? Row(
+                          children: [
+                            Expanded(child: details),
+                            const SizedBox(width: 16),
+                            actions,
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            details,
+                            const SizedBox(height: 14),
+                            actions,
+                          ],
+                        ),
+                );
+              },
+            ),
+            if (!collapsed)
+              if (group.students.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('No students in this group yet.'),
+                )
+              else if (context.breakpoint.usesDataTable)
+                _buildStudentTable(group, groups)
+              else
+                _buildStudentCards(group, groups),
+          ],
+        ),
       ),
     );
   }
@@ -820,10 +858,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   /// Tablet and desktop: the full six-column table.
-  Widget _buildStudentTable(
-    CapstoneGroup group,
-    List<CapstoneGroup> groups,
-  ) {
+  Widget _buildStudentTable(CapstoneGroup group, List<CapstoneGroup> groups) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -865,10 +900,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   /// sideways, which meant the actions column - the reason an admin opens this
   /// screen - was off-screen by default. Same data, same actions, no
   /// horizontal scrolling.
-  Widget _buildStudentCards(
-    CapstoneGroup group,
-    List<CapstoneGroup> groups,
-  ) {
+  Widget _buildStudentCards(CapstoneGroup group, List<CapstoneGroup> groups) {
     final colors = AppColors.of(context);
 
     return Padding(
@@ -1045,10 +1077,7 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
                   ),
                 ),
                 AppSpacing.vLg,
-                CredentialValue(
-                  label: 'Student ID',
-                  value: created.studentId,
-                ),
+                CredentialValue(label: 'Student ID', value: created.studentId),
                 AppSpacing.vSm,
                 CredentialValue(
                   label: 'Temporary password',
@@ -1115,16 +1144,18 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
     }
   }
 
-  Future<void> grantPremium(CapstoneGroup group) async {
+  Future<void> setGroupPremium(CapstoneGroup group, bool isPremium) async {
     final colors = AppColors.of(context);
-    // Premium has no revoke path, so granting it deserves a confirmation.
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Grant Premium'),
+        title: Text(isPremium ? 'Grant Premium' : 'Revert to Free Plan'),
         content: Text(
-          'Grant Premium to "${group.name}"? This unlocks the premium '
-          'features for all its members and cannot be reverted.',
+          isPremium
+              ? 'Grant Premium to "${group.name}"? This unlocks premium '
+                    'features for all its members.'
+              : 'Revert "${group.name}" to the free plan? Premium features '
+                    'will no longer be available to its members.',
         ),
         actions: [
           TextButton(
@@ -1137,14 +1168,17 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
               foregroundColor: colors.onColor,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Grant Premium'),
+            child: Text(isPremium ? 'Grant Premium' : 'Revert to Free'),
           ),
         ],
       ),
     );
 
     if (confirm != true) return;
-    await runAction(() => _repo.grantPremium(group), 'Premium granted.');
+    await runAction(
+      () => _repo.setPremium(group, isPremium),
+      isPremium ? 'Premium granted.' : 'Group reverted to the free plan.',
+    );
     // Pulse the card so the change is visible where it happened, not only in
     // a snack bar that may be read after looking away.
     if (mounted) {
@@ -1207,28 +1241,28 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  border: OutlineInputBorder(),
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: targetGroupId,
-                decoration: const InputDecoration(
-                  labelText: 'Group',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: targetGroupId,
+                  decoration: const InputDecoration(
+                    labelText: 'Group',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final g in groups)
+                      DropdownMenuItem(value: g.id, child: Text(g.name)),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => targetGroupId = value ?? targetGroupId),
                 ),
-                items: [
-                  for (final g in groups)
-                    DropdownMenuItem(value: g.id, child: Text(g.name)),
-                ],
-                onChanged: (value) =>
-                    setState(() => targetGroupId = value ?? targetGroupId),
-              ),
               ],
             ),
           ),
@@ -1299,8 +1333,9 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
         title: const Text('Delete Student'),
         content: Text(
           'Delete ${student.name} (${student.studentId}) from '
-          '"${group.name}"? They will no longer be able to log in. '
-          'This cannot be undone.',
+          '"${group.name}"? Their Firebase Authentication login, including '
+          'the email address, and their student records will be deleted. '
+          'They will no longer be able to log in. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -1431,7 +1466,11 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
-        child: SizedBox(width: 52, height: 52, child: CircularProgressIndicator()),
+        child: SizedBox(
+          width: 52,
+          height: 52,
+          child: CircularProgressIndicator(),
+        ),
       ),
     );
     try {
@@ -1442,9 +1481,8 @@ class _AdminPortalPageState extends State<AdminPortalPage> {
   }
 
   void showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

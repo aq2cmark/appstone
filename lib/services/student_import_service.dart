@@ -96,8 +96,9 @@ class StudentImportService {
 
   ImportPreview validate(
     List<ParsedStudentRow> parsed,
-    List<CapstoneGroup> existingGroups,
-  ) {
+    List<CapstoneGroup> existingGroups, {
+    int maxGroupSize = StudentImportService.maxGroupSize,
+  }) {
     // Existing state to check against.
     final existingEmails = <String>{
       for (final group in existingGroups)
@@ -136,11 +137,9 @@ class StudentImportService {
       }
 
       if (error != null) {
-        rows.add(ImportRow(
-          data: row,
-          status: ImportRowStatus.error,
-          message: error,
-        ));
+        rows.add(
+          ImportRow(data: row, status: ImportRowStatus.error, message: error),
+        );
         continue;
       }
 
@@ -190,13 +189,15 @@ class StudentImportService {
           email: row.email,
           groupId: groupId,
         );
-        created.add(ImportedStudent(
-          name: row.name,
-          email: row.email,
-          studentId: student.studentId,
-          tempPassword: student.tempPassword,
-          group: row.group.trim(),
-        ));
+        created.add(
+          ImportedStudent(
+            name: row.name,
+            email: row.email,
+            studentId: student.studentId,
+            tempPassword: student.tempPassword,
+            group: row.group.trim(),
+          ),
+        );
       } catch (error) {
         failures.add(ImportFailure(row: row, message: error.toString()));
       }
@@ -294,7 +295,9 @@ class StudentImportService {
 
   List<ParsedStudentRow> _rowsToStudents(List<List<String>> rows) {
     // First non-empty row is the header.
-    final headerIndex = rows.indexWhere((r) => r.any((c) => c.trim().isNotEmpty));
+    final headerIndex = rows.indexWhere(
+      (r) => r.any((c) => c.trim().isNotEmpty),
+    );
     if (headerIndex == -1) {
       throw ImportException('The file is empty.');
     }
@@ -325,12 +328,14 @@ class StudentImportService {
       // Skip completely blank rows silently.
       if (name.isEmpty && email.isEmpty && group.isEmpty) continue;
       dataNumber++;
-      students.add(ParsedStudentRow(
-        rowNumber: dataNumber,
-        name: name,
-        email: email,
-        group: group,
-      ));
+      students.add(
+        ParsedStudentRow(
+          rowNumber: dataNumber,
+          name: name,
+          email: email,
+          group: group,
+        ),
+      );
     }
     return students;
   }
@@ -365,7 +370,9 @@ class StudentImportService {
     try {
       archive = ZipDecoder().decodeBytes(bytes);
     } catch (_) {
-      throw ImportException('Could not read the .xlsx file. Re-save it and try again.');
+      throw ImportException(
+        'Could not read the .xlsx file. Re-save it and try again.',
+      );
     }
 
     // Shared strings: cell text is stored here and referenced by index.

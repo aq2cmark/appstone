@@ -102,8 +102,8 @@ Generate 5 concise, formal capstone project titles that reflect ALL of these
 selected elements:
 ${lines.join('\n')}
 
-The elements above belong together - treat them as ONE coherent project, not a
-list of separate ideas to combine arbitrarily. If the student wrote their own
+The elements above belong together. You should think of a way to combine them cohesively dont just connect
+them together, all the selected elements must blend into one title that represents the entire concept. If the student wrote their own
 request, weight it most heavily.
 
 Return ONLY the 5 titles, one per line, no numbering and no extra commentary.

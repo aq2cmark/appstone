@@ -15,12 +15,14 @@ class ImportStudentsPage extends StatefulWidget {
     super.key,
     required this.repo,
     required this.groups,
+    required this.maxGroupMembers,
   });
 
   final AdminRepository repo;
   // Current groups from the portal's live stream, used to validate rows
   // (duplicate emails, group capacity, which groups need creating).
   final List<CapstoneGroup> groups;
+  final int maxGroupMembers;
 
   @override
   State<ImportStudentsPage> createState() => _ImportStudentsPageState();
@@ -58,7 +60,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                   'in the first row: Name, Email, and Group. Each student is '
                   'auto-assigned a Student ID and a temporary password. Groups '
                   'named in the file are created if they do not exist yet '
-                  '(max 5 members each).',
+                  '(max $maxGroupMembers members each).',
                   style: TextStyle(color: colors.textSecondary),
                 ),
                 const SizedBox(height: 16),
@@ -72,7 +74,9 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
                       ),
                       onPressed: _busy ? null : _pickAndParse,
                       icon: const Icon(Icons.upload_file_rounded),
-                      label: Text(_fileName == null ? 'Select File' : 'Change File'),
+                      label: Text(
+                        _fileName == null ? 'Select File' : 'Change File',
+                      ),
                     ),
                     OutlinedButton.icon(
                       onPressed: _downloadTemplate,
@@ -177,9 +181,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
             Row(
               children: [
                 FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: colors.brand,
-                  ),
+                  style: FilledButton.styleFrom(backgroundColor: colors.brand),
                   onPressed: preview.validCount == 0 || _busy ? null : _import,
                   icon: const Icon(Icons.group_add),
                   label: Text('Import ${preview.validCount} student(s)'),
@@ -350,7 +352,11 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
       if (parsed.isEmpty) {
         throw ImportException('No student rows found in the file.');
       }
-      final preview = _service.validate(parsed, widget.groups);
+      final preview = _service.validate(
+        parsed,
+        widget.groups,
+        maxGroupSize: widget.maxGroupMembers,
+      );
       if (!mounted) return;
       setState(() => _preview = preview);
     } catch (error) {
@@ -408,7 +414,9 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
       );
       if (!kIsWeb && path == null) return;
       if (mounted) {
-        _snack('Template saved. Open it in Excel, fill it in, then upload it here.');
+        _snack(
+          'Template saved. Open it in Excel, fill it in, then upload it here.',
+        );
       }
     } catch (error) {
       if (mounted) _snack('Could not save the template: $error');
@@ -427,6 +435,7 @@ class _ImportStudentsPageState extends State<ImportStudentsPage> {
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }

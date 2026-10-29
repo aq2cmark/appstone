@@ -53,16 +53,25 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      isPremium: isPremium,
-      home: HomeView(
-        studentName: studentName,
-        groupName: groupName,
-        isPremium: isPremium,
-        groupId: groupId,
-        studentId: studentId,
-        mustChangePassword: mustChangePassword,
-      ),
+    return StreamBuilder<bool>(
+      stream: AdminRepository().groupPremiumStream(groupId),
+      initialData: isPremium,
+      builder: (context, snapshot) {
+        final currentPremium = snapshot.hasError
+            ? isPremium
+            : snapshot.data ?? isPremium;
+        return AppShell(
+          isPremium: currentPremium,
+          home: HomeView(
+            studentName: studentName,
+            groupName: groupName,
+            isPremium: currentPremium,
+            groupId: groupId,
+            studentId: studentId,
+            mustChangePassword: mustChangePassword,
+          ),
+        );
+      },
     );
   }
 }
@@ -106,6 +115,21 @@ class _HomeViewState extends State<HomeView> {
       });
     }
     _loadSummary();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isPremium != widget.isPremium) {
+      if (widget.isPremium) {
+        _loadSummary();
+      } else {
+        setState(() {
+          _summary = null;
+          _loadingSummary = false;
+        });
+      }
+    }
   }
 
   /// Reads what the student has already done, so Home can show state instead of

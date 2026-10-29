@@ -7,6 +7,7 @@ import '../theme/app_typography.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_motion_widgets.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/ai_disclaimer.dart';
 import '../widgets/charts/progress_ring.dart';
 import '../widgets/icon_tile.dart';
 
@@ -105,6 +106,12 @@ class _DefensePracticeScreenState extends State<DefensePracticeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           StaggeredEntrance(index: 0, child: _buildContextCard()),
+          AppSpacing.vMd,
+          const AiDisclaimer(
+            text: 'Practice questions and feedback are AI-generated and may '
+                'be inaccurate. Use them for practice only; they are not an '
+                'official evaluation or a substitute for your adviser or panel.',
+          ),
           AppSpacing.vXl,
           StaggeredEntrance(
             index: 1,
