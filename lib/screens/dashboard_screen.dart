@@ -609,10 +609,9 @@ class _HomeViewState extends State<HomeView> {
 
   /// Opens a module.
   ///
-  /// Four of the five modules are shell destinations, so they switch tabs -
-  /// landing in exactly the same place as tapping the tab, with the navigation
-  /// bar still there. Anything else (the Title Generator) is pushed, and gets a
-  /// back button automatically because it can pop.
+  /// Shell destinations switch tabs, landing in the same place as tapping the
+  /// navigation item, with the navigation bar still there. Other routes are
+  /// pushed and get a back button automatically because they can pop.
   Future<void> _open(String route) async {
     final destination = AppShellScope.destinationForRoute(route);
     final shell = AppShellScope.of(context);

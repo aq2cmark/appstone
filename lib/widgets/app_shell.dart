@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../screens/capstone_manual_screen.dart';
+import '../screens/title_generator_screen.dart';
 import '../screens/paper_checker_screen.dart';
 import '../screens/ai_workflow_screen.dart';
 import '../screens/defense_practice_screen.dart';
@@ -47,6 +48,11 @@ enum AppDestination {
     label: 'Manual',
     icon: Icons.menu_book_outlined,
     selectedIcon: Icons.menu_book_rounded,
+  ),
+  titleGenerator(
+    label: 'Title Generator',
+    icon: Icons.lightbulb_outline_rounded,
+    selectedIcon: Icons.lightbulb_rounded,
   ),
   practice(
     label: 'Practice',
@@ -108,6 +114,7 @@ class AppShellScope extends InheritedWidget {
   /// the five tabs and therefore has to be pushed.
   static AppDestination? destinationForRoute(String route) => switch (route) {
         '/capstone-manual' => AppDestination.manual,
+        '/title-generator' => AppDestination.titleGenerator,
         '/defense-practice' => AppDestination.practice,
         '/ai-workflow' => AppDestination.workflow,
         '/paper-checker' => AppDestination.checker,
@@ -159,6 +166,7 @@ class _AppShellState extends State<AppShell> {
     return _built[index] ??= switch (destination) {
       AppDestination.home => widget.home,
       AppDestination.manual => const CapstoneManualScreen(),
+      AppDestination.titleGenerator => const TitleGeneratorScreen(),
       AppDestination.practice => const DefensePracticeScreen(),
       AppDestination.workflow => const AIWorkflowScreen(),
       AppDestination.checker => const PaperCheckerScreen(),
